@@ -19,14 +19,6 @@
             ("food", food), ("grades", grades),
             ("friends", friends)):
             setattr(store, key, max(0, min(100, getattr(store, key) + delta)))
-        # Immediately route to an ending whenever a threshold is crossed.
-        # These are fictional gameplay thresholds, not medical or university rules.
-        if store.energy <= 0:
-            renpy.jump("ending_ambulance")
-        if store.grades < 65:
-            renpy.jump("ending_dismissal")
-        if store.friends <= 0:
-            renpy.jump("ending_isolation")
 
     def clock_label():
         hour = (store.clock // 60) % 24
@@ -76,17 +68,81 @@ default rested_today = False
 default friday_test_preparation = 0
 default academic_notes = []
 default social_notes = []
-default homework_submitted = 0
-default homework_assigned = 0
-default test_correct = 0
-default test_total = 0
-default missed_labs = 0
-default late_projects = 0
-default campus_support = False
-default club_task = False
-default conflict_resolved = False
-default monday_promise = False
-default thursday_deadline = False
+
+
+# Appearance and condition are separate selections.
+default selected_condition = 0
+default symptom_load = 0
+default care_completed = []
+default routine_day = 0
+
+init python:
+    unseen_avatars = [
+        ("Nova", "avatar1.png", "#D7B8EC"),
+        ("Sage", "avatar2.png", "#B8DDEB"),
+        ("Ember", "avatar3.png", "#F3C9C7"),
+        ("Juniper", "avatar4.png", "#D2E6CC"),
+    ]
+    unseen_conditions = [
+        {
+            "name": "POTS",
+            "about": "A form of autonomic dysfunction that can involve rapid heart rate on standing, dizziness, fatigue and brain fog. Symptoms vary.",
+            "symptoms": ["Dizziness, vertigo or unsteadiness", "Visual dimming or muffled hearing during presyncope", "Fatigue, concentration problems and sometimes fainting"],
+            "needs": ["Plan fluid intake and any extra salt with a clinician", "Compression garments if recommended", "Check heart rate or blood pressure when useful", "Sit or lie down if feeling faint; rise gradually", "Use a shower chair or mobility support if helpful"],
+            "schedule": ["8:00 AM - breakfast and morning check-in", "Before leaving - pack water and any prescribed supplies", "Between classes - hydration and seated breaks", "Evening - check symptoms and prepare tomorrow's supplies"],
+            "challenge": "Standing in line, long walks, heat, and packed class days can increase symptoms.",
+        },
+        {
+            "name": "Chronic Daily Migraines",
+            "about": "Frequent headache days may affect light sensitivity, nausea, fatigue and concentration. Not every attack involves every symptom.",
+            "symptoms": ["Head pain and impaired concentration", "Nausea, sometimes vomiting", "Light, sound or smell sensitivity", "Some people experience dizziness or other neurological symptoms"],
+            "needs": ["Follow an individually prescribed acute/preventive medication plan", "Use a quieter, darker space during attacks when helpful", "Manage triggers and maintain regular food and fluids", "Build breaks into prolonged concentration", "Track patterns without assuming every attack is preventable"],
+            "schedule": ["8:00 AM - breakfast and symptom check", "Before class - pack prescribed medication if applicable", "Midday - meal, fluids, sensory break", "Evening - record symptoms and prepare a quiet rest option"],
+            "challenge": "A flare may begin unpredictably and complicate class attendance or exams.",
+        },
+        {
+            "name": "Tourette Syndrome",
+            "about": "A neurological condition involving involuntary motor and/or vocal tics. Coprolalia (involuntary obscene words) occurs in a minority of people.",
+            "symptoms": ["Motor and vocal tics", "Sometimes painful or exhausting tic episodes", "Premonitory urges for some tics", "Communication challenges and social misunderstandings"],
+            "needs": ["Take breaks when tics are exhausting", "Find a comfortable place to let tics occur safely", "Use CBIT skills if trained and helpful; they are not a requirement", "Request class or testing accommodations as needed", "Communicate with trusted people when comfortable"],
+            "schedule": ["8:00 AM - check how you are feeling", "Before class - identify break and accommodation options", "Between classes - decompress if needed", "Evening - rest and prepare for tomorrow"],
+            "challenge": "A tic episode during a quiet exam can cause stress and misunderstanding.",
+        },
+        {
+            "name": "Fibromyalgia",
+            "about": "A chronic condition associated with widespread pain, fatigue, unrefreshing sleep and cognitive difficulties. Severity varies.",
+            "symptoms": ["Widespread pain or stiffness", "Significant fatigue", "Sleep disruption", "Brain fog and sometimes headaches"],
+            "needs": ["Pace activities and plan recovery breaks", "Use gentle movement or stretching if tolerated", "Choose supportive seating and accessible routes", "Use reminders or notes for cognitive fatigue", "Keep a flexible sleep routine"],
+            "schedule": ["8:00 AM - gentle start and breakfast", "Before class - plan transport and seating", "Midday - paced movement and rest break", "Evening - organize reminders and allow recovery"],
+            "challenge": "A poor night of sleep may make a full day of labs and lectures harder.",
+        },
+        {
+            "name": "Multiple Sclerosis",
+            "about": "MS is an immune-mediated condition affecting the central nervous system. Symptoms are diverse, and not everyone experiences the same impairments.",
+            "symptoms": ["Numbness, tingling, weakness or spasticity", "Visual changes or pain with eye movement", "Fatigue, dizziness and balance problems", "Bladder, speech, swallowing or thinking difficulties in some people"],
+            "needs": ["Use prescribed treatments and mobility aids as appropriate", "Take breaks for neurological fatigue", "Record new or worsening symptoms and contact the care team", "Use reminders and accessible class arrangements", "Seek urgent assessment for sudden major neurological changes"],
+            "schedule": ["8:00 AM - check symptoms and mobility needs", "Before class - plan accessible transport", "Midday - neurological fatigue break", "Evening - review changes and follow prescribed care plan"],
+            "challenge": "Unexpected changes in fatigue or mobility can disrupt travel between buildings.",
+        },
+        {
+            "name": "Type 1 Diabetes",
+            "about": "Type 1 diabetes requires insulin and glucose management. Insulin doses and glucose-check frequency are individualized; this game does not prescribe them.",
+            "symptoms": ["Low or high glucose may affect concentration and energy", "High glucose can cause thirst and frequent urination", "Low glucose may cause shakiness, sweating or confusion", "Vomiting, abdominal pain, fruity breath or deep breathing can signal an emergency"],
+            "needs": ["Check glucose using your prescribed meter/CGM plan", "Take insulin as prescribed; never guess a dose", "Carry rapid-acting glucose and emergency supplies", "For a low, follow your personal treatment plan and recheck as directed (often after 15 minutes)", "Seek emergency help for severe low glucose, suspected DKA, or inability to swallow safely"],
+            "schedule": ["8:00 AM - glucose check and breakfast plan", "Meals - account for food and insulin per prescribed plan", "Between classes - check alerts and carry supplies", "Evening - review glucose and prepare supplies"],
+            "challenge": "A glucose alert during an exam can force a choice between privacy and immediate care.",
+        },
+    ]
+
+    def unseen_care_step(step):
+        if step not in store.care_completed:
+            store.care_completed.append(step)
+            store.energy = min(100, store.energy + 5)
+            store.water = min(100, store.water + 3)
+
+    def unseen_daily_load():
+        # Fictional variability, not a physiological simulation.
+        return 5 + ((store.day * 7 + store.selected_condition * 3) % 9)
 
 # Ren'Py screen language. The game uses a 1920 x 1080 design resolution.
 # Adjust the resolution in game/gui.rpy if your project uses a different one.
@@ -189,6 +245,131 @@ screen unseen_hud():
                     right_bar Solid("#51425F")
                     thumb None
 
+
+# Carousel-style screens. Large portrait area is reserved for supplied artwork.
+screen unseen_avatar_picker():
+    modal True
+    default index = 0
+    add Solid("#1E172BEF")
+    frame:
+        xalign 0.5
+        yalign 0.5
+        xsize 1560
+        ysize 880
+        background Solid("#30243F")
+        xpadding 42
+        ypadding 32
+        vbox:
+            spacing 18
+            text "CHOOSE YOUR CHARACTER" xalign 0.5 size 46 bold True color "#F5D9FF"
+            text "Use the arrows to browse. Portrait art can be replaced later." xalign 0.5 size 24 color "#E7D4F4"
+            hbox:
+                xalign 0.5
+                yalign 0.5
+                spacing 42
+                textbutton "❮" action SetScreenVariable("index", (index - 1) % len(unseen_avatars)) text_size 62
+                frame:
+                    xsize 700
+                    ysize 580
+                    background Solid("#443552")
+                    xpadding 14
+                    ypadding 14
+                    add unseen_portrait(unseen_avatars[index][1], unseen_avatars[index][2]) xalign 0.5 yalign 0.5
+                textbutton "❯" action SetScreenVariable("index", (index + 1) % len(unseen_avatars)) text_size 62
+            text unseen_avatars[index][0] xalign 0.5 size 34 color "#FFFFFF"
+            textbutton "SELECT CHARACTER" xalign 0.5 action Return(index + 1) text_size 30
+
+screen unseen_condition_picker():
+    modal True
+    default index = 0
+    add Solid("#1E172BF8")
+    frame:
+        xalign 0.5
+        yalign 0.5
+        xsize 1760
+        ysize 980
+        background Solid("#30243F")
+        xpadding 40
+        ypadding 26
+        vbox:
+            spacing 15
+            text "CHOOSE AN EXPERIENCE" xalign 0.5 size 43 bold True color "#F5D9FF"
+            hbox:
+                xalign 0.5
+                spacing 20
+                textbutton "❮" action SetScreenVariable("index", (index - 1) % len(unseen_conditions)) text_size 56
+                text unseen_conditions[index]["name"] size 36 bold True color "#FFFFFF" xalign 0.5 xsize 1050 text_align 0.5
+                textbutton "❯" action SetScreenVariable("index", (index + 1) % len(unseen_conditions)) text_size 56
+            text unseen_conditions[index]["about"] xalign 0.5 xmaximum 1560 text_align 0.5 size 23 color "#EADFF0"
+            viewport:
+                xsize 1630
+                ysize 640
+                mousewheel True
+                draggable True
+                scrollbars "vertical"
+                vbox:
+                    spacing 15
+                    frame:
+                        xfill True
+                        background Solid("#483857")
+                        xpadding 25
+                        ypadding 15
+                        vbox:
+                            spacing 8
+                            text "POSSIBLE SYMPTOMS" size 28 bold True color "#F0C8FF"
+                            for item in unseen_conditions[index]["symptoms"]:
+                                text "• " + item size 22 color "#FFFFFF"
+                    frame:
+                        xfill True
+                        background Solid("#483857")
+                        xpadding 25
+                        ypadding 15
+                        vbox:
+                            spacing 8
+                            text "SELF-CARE AND SUPPORT OPTIONS" size 28 bold True color "#BFEAFF"
+                            for item in unseen_conditions[index]["needs"]:
+                                text "• " + item size 22 color "#FFFFFF"
+                    frame:
+                        xfill True
+                        background Solid("#483857")
+                        xpadding 25
+                        ypadding 15
+                        vbox:
+                            spacing 8
+                            text "SAMPLE DAILY TASK LIST" size 28 bold True color "#FFD2E3"
+                            for item in unseen_conditions[index]["schedule"]:
+                                text "□ " + item size 22 color "#FFFFFF"
+                    text "GAMEPLAY CHALLENGE: " + unseen_conditions[index]["challenge"] size 22 color "#FFFFFF"
+            text "Schedules are examples, not medical instructions. Follow your own clinician's plan." xalign 0.5 size 19 color "#E5C9E8"
+            textbutton "PLAY THIS EXPERIENCE" xalign 0.5 action Return(index) text_size 29
+
+screen unseen_daily_tasks():
+    modal True
+    add Solid("#1E172BEF")
+    frame:
+        xalign 0.5
+        yalign 0.5
+        xsize 1360
+        ysize 830
+        background Solid("#30243F")
+        xpadding 45
+        ypadding 35
+        vbox:
+            spacing 18
+            text "DAY [day] — DAILY CARE PLAN" size 42 bold True color "#F4D4FF"
+            text unseen_conditions[selected_condition]["name"] size 30 color "#BCEAFF"
+            text "Choose a task to plan for today. Completing one costs time but helps your game resources." size 23 color "#FFFFFF"
+            for i, task in enumerate(unseen_conditions[selected_condition]["schedule"]):
+                hbox:
+                    spacing 20
+                    if i in care_completed:
+                        text "✓" size 28 color "#A8EAC6"
+                        text task size 23 color "#D9CFE2"
+                    else:
+                        textbutton "□  " + task action [Function(unseen_care_step, i), SetVariable("clock", clock + 15)] text_size 23
+            text "Other tasks can be completed later through story decisions." size 20 color "#CFC3D7"
+            textbutton "START THE DAY" xalign 0.5 action Return() text_size 30
+
 # Make the default text box readable, without editing screens.rpy.
 style window:
     background Solid("#211B2DEB")
@@ -215,611 +396,645 @@ style choice_button:
     ypadding 20
 
 
-
-# ========================= UNSEEN: WEEK ONE =========================
-# Fictional gameplay: the three loss thresholds are narrative mechanics.
-# The Tuesday/Thursday ENEE222 and CMSC216 overlaps in the reference
-# calendar are handled as scheduling conflicts, not simultaneous attendance.
+# -------------------- MAIN STORY --------------------
+# This is a complete five-day playable prototype.
+# All scores are game mechanics, not medical advice or predictions.
 
 label start:
-    # Reset the entire run, including when replaying from a game-over screen.
-    $ energy = 75
-    $ water = 60
-    $ food = 80
-    $ grades = 85
-    $ friends = 50
-    $ club_name = "None"
-    $ homework_submitted = 0
-    $ test_correct = 0
-    $ test_total = 0
-    $ class_attendance = 0
-    $ missed_classes = 0
-    $ missed_labs = 0
-    $ late_projects = 0
-    $ accommodations_requested = False
-    $ honest_conversation = False
-    $ campus_support = False
-    $ club_commitment = 0
-    $ club_task = False
-    $ monday_promise = False
-    $ thursday_deadline = False
     scene bg dorm
     $ day = 1
     $ clock = 480
-    "UNSEEN — WEEK ONE"
-    "You're starting another week at the University of Maryland while managing POTS, classes, friendships, and the pressure to keep up."
-    "Every choice matters. You cannot do everything, and sometimes a reasonable decision has an unexpected cost."
-    $ player_name = renpy.input("What is your name?", length=24).strip() or "Alex"
-    "Choose a portrait. Your appearance doesn't change your disability or your options."
-    menu:
-        "Portrait 1":
-            $ avatar_choice = 1
-        "Portrait 2":
-            $ avatar_choice = 2
-        "Portrait 3":
-            $ avatar_choice = 3
-        "Portrait 4":
-            $ avatar_choice = 4
-    if avatar_choice == 1:
-        show avatar one at right
-    elif avatar_choice == 2:
-        show avatar two at right
-    elif avatar_choice == 3:
-        show avatar three at right
-    else:
-        show avatar four at right
-    p "Let's see what this week brings."
-    hide avatar one
-    hide avatar two
-    hide avatar three
-    hide avatar four
+    "UNSEEN"
+    "College can be exciting, exhausting, unpredictable, and full of competing priorities."
+    "Choose your character and then choose which disability experience to explore."
+    $ player_name = renpy.input("What should everyone call you?", length=24).strip()
+    if not player_name:
+        $ player_name = "Alex"
+    $ avatar_choice = renpy.call_screen("unseen_avatar_picker")
+    $ selected_condition = renpy.call_screen("unseen_condition_picker")
+    "You selected [unseen_conditions[selected_condition]['name']]. This story portrays one fictional experience, not everyone with the condition."
+    "Self-care and symptom patterns differ between people. The task list is a game mechanic, not a treatment plan."
     show screen unseen_hud
-    "Your Grades begin at 85. Energy begins at 75, and Friends at 50."
-    "GAME RULES: Energy at 0, Grades below 65, or Friends at 0 immediately ends the run."
-    "Food and Water influence your energy through choices. They are resources, not medical measurements."
+    "Grades begin at 85. Classes, exams, relationships and self-care compete for your time."
     jump monday
 
 label monday:
     $ day = 1
     $ clock = 480
     scene bg dorm
+    $ care_completed = []
+    $ symptom_load = unseen_daily_load()
+    $ change_stats(energy=-symptom_load)
+    $ renpy.call_screen("unseen_daily_tasks")
     "MONDAY — 8:00 AM"
-    "Your schedule: CMSC216 discussion at 10; CPBE225 at 11; ENEE222 at 12:30; PHYS161 at 2; and CPBE200 at 6:30."
-    "A CMSC216 programming assignment is due tonight. Mira has been trying to make plans with you."
+    call unseen_incident
+    "Your CMSC216 discussion begins at 10:00. An ENEE222 assessment is coming up, and your CMSC216 programming assignment is due tonight."
+    "You also promised Mira you'd get lunch together."
     menu:
-        "Finish debugging before breakfast so the assignment is ready.":
-            $ change_stats(minutes=85, energy=-13, food=-12, water=-9, grades=4)
-            $ homework_submitted += 1
-            "The program finally compiles. You leave in a rush."
-        "Eat, fill your water bottle, and plan to finish the assignment after class.":
-            $ change_stats(minutes=85, energy=7, food=19, water=20, grades=-2)
-            $ monday_promise = True
-            "You feel more prepared for the morning, but the deadline hasn't moved."
-        "Email the TA about a bug, then work for forty minutes and eat something.":
-            $ change_stats(minutes=85, energy=-4, food=9, water=10, grades=1)
+        "Eat breakfast and pack water; leave less time to review code.":
+            $ change_stats(minutes=65, food=18, water=17, energy=3)
+            $ friday_test_preparation += 1
+            "You leave feeling more prepared for the physical demands of the morning, but your code review is rushed."
+        "Review your code before leaving; skip the slower morning routine.":
+            $ change_stats(minutes=65, food=-13, water=-10, energy=-9)
+            $ friday_test_preparation += 3
+            "You catch a tricky bug. The morning feels harder than you hoped."
+        "Ask your teaching assistant for an extension and take a measured morning.":
+            $ change_stats(minutes=65, food=10, water=10, energy=5)
             $ accommodations_requested = True
-            $ monday_promise = True
-            "You ask for help. A reply might come before the deadline."
-    scene bg classroom
-    $ clock = 600
-    "10:00 AM — CMSC216 Discussion, ESJ 1309"
-    "The TA explains pointers and memory. Your professor expects you to know this for the next assessment."
-    menu:
-        "Stay for discussion and ask a question afterward.":
-            $ class_attendance += 1
-            $ change_stats(minutes=55, energy=-12, water=-6, grades=2)
-            "The explanation clicks, but you're already running low on time."
-        "Take a brief break outside and return for the second half.":
-            $ class_attendance += 1
-            $ change_stats(minutes=55, energy=-4, grades=0)
-            "You miss the first example but stay for the rest."
-        "Skip discussion to finish the programming assignment.":
-            $ missed_classes += 1
-            $ homework_submitted += 1
-            $ change_stats(minutes=55, energy=-9, grades=1)
-            "The assignment is submitted. You missed the TA's warning about a common exam mistake."
+            "You send a message. Whether an extension is granted is not guaranteed, but you've communicated early."
     scene bg campus
-    $ clock = 660
-    "11:00 AM — CPBE225 Lecture, TWS 0236. ENEE222 begins at 12:30 in KEB 1110."
-    "You have fifteen minutes between them, including the trip across campus."
+    $ clock = 590
+    "9:50 AM — The Iribe Center"
+    "The campus is busy. Your first lecture is about arrays and indexes."
     menu:
-        "Attend both lectures and grab food afterward.":
+        "Attend CMSC216 and take notes, even though you feel worn down.":
+            $ class_attendance += 1
+            $ change_stats(minutes=55, energy=-13, water=-8)
+            "You understand the examples, but the long morning takes energy."
+        "Attend with a brief break and ask for the lecture notes afterward.":
+            $ class_attendance += 1
+            $ accommodations_requested = True
+            $ change_stats(minutes=55, energy=-7, water=-5)
+            "You miss a few minutes, then catch up using the notes."
+        "Return to your dorm and work through the lecture material later.":
+            $ missed_classes += 1
+            $ change_stats(minutes=55, energy=8)
+            $ friday_test_preparation -= 1
+            "Rest helps. Now you have an additional lecture to catch up on."
+    "11:00 AM — You have a discussion section, travel to circuits, and lunch to fit in."
+    menu:
+        "Go to discussion, take paratransit, and arrive at circuits on time.":
             $ class_attendance += 2
-            $ change_stats(minutes=165, energy=-23, food=-15, water=-12, grades=3)
-            "You get both sets of notes. You don't get a real lunch break."
-        "Attend CPBE225, then eat and arrive late to ENEE222.":
+            $ change_stats(minutes=120, energy=-23, food=-13, water=-10)
+            $ friday_test_preparation += 2
+            "You make both classes. Mira texts: 'Still doing lunch?'"
+        "Go to discussion, eat with Mira, and arrive late to circuits.":
             $ class_attendance += 1
             $ missed_classes += 1
-            $ change_stats(minutes=165, energy=-8, food=19, water=12, grades=-3)
-            "You miss a key circuit-analysis example."
-        "Attend ENEE222 after taking a rest break; miss CPBE225.":
-            $ class_attendance += 1
+            $ change_stats(minutes=120, energy=-9, food=20, water=9, friends=9)
+            "Lunch is wonderful. You miss the start of the circuits example."
+        "Take a break and eat before circuits; miss discussion.":
             $ missed_classes += 1
-            $ change_stats(minutes=165, energy=8, food=9, water=10, grades=-4)
-            "You have energy for circuits but need to catch up on CPBE225."
-    scene bg classroom
-    $ clock = 840
-    "2:00 PM — PHYS161 Lecture, PHY 1410"
-    "The professor introduces forces and free-body diagrams."
+            $ class_attendance += 1
+            $ change_stats(minutes=120, energy=8, food=17, water=12, friends=-3)
+            "You arrive at circuits steadier, but your discussion notes are missing."
+    scene bg library
+    $ clock = 900
+    "3:00 PM — Your CMSC216 assignment is due tonight. Mira has invited you to study together."
+    $ assignments_total += 1
     menu:
-        "Attend and take notes even though you're tired.":
-            $ class_attendance += 1
-            $ change_stats(minutes=55, energy=-12, grades=2)
-        "Sit out the lecture, rest, and request notes from a classmate.":
-            $ missed_classes += 1
-            $ change_stats(minutes=55, energy=12, friends=2, grades=-3)
-            "Your classmate agrees to share notes later."
-    scene bg cafe
-    $ clock = 960
-    "4:00 PM — Mira asks if you can meet before your 6:30 CPBE200 lecture."
+        "Finish the assignment alone while you still have momentum.":
+            $ assignments_done += 1
+            $ change_stats(minutes=120, energy=-18, food=-8, grades=2)
+            $ friday_test_preparation += 1
+            "You submit your work. Mira ends up studying with someone else."
+        "Study with Mira; ask for help, but submit a partially finished assignment.":
+            $ change_stats(minutes=120, energy=-11, food=-7, friends=10, grades=-2)
+            $ friday_test_preparation += 2
+            "You understand the material better, but some assignment points are left on the table."
+        "Request help and take a recovery break before finishing.":
+            $ assignments_done += 1
+            $ accommodations_requested = True
+            $ change_stats(minutes=150, energy=2, food=-6, grades=1, friends=-2)
+            "You work in shorter blocks and submit later in the evening."
+    scene bg dorm
+    $ clock = 1260
+    "9:00 PM — Tomorrow brings circuits discussion and a policy seminar."
     menu:
-        "Meet Mira for an hour and talk about the week.":
-            $ change_stats(minutes=70, energy=-9, food=9, friends=16)
-            "Mira tells you she's been worried you've stopped wanting to hang out."
-        "Tell Mira you're overwhelmed and offer a specific time on Friday.":
-            $ honest_conversation = True
-            $ change_stats(minutes=15, energy=5, friends=7)
-            "Mira replies: 'Friday works. Thanks for telling me.'"
-        "Ignore the message and focus on the assignment.":
-            $ change_stats(minutes=90, energy=-13, friends=-17, grades=3)
-            "You make progress. Mira stops texting."
-    scene bg classroom
-    $ clock = 1110
-    "6:30 PM — CPBE200 Lecture, ESJ 1202"
-    menu:
-        "Attend the evening lecture and take the late trip home.":
-            $ class_attendance += 1
-            $ change_stats(minutes=75, energy=-15, food=-8, water=-7, grades=2)
-        "Go home and review the posted slides tomorrow.":
-            $ missed_classes += 1
-            $ change_stats(minutes=75, energy=10, grades=-4)
-    if monday_promise:
-        scene bg dorm
-        $ clock = 1260
-        "9:00 PM — The CMSC216 assignment is still due."
-        menu:
-            "Stay up to finish and submit it.":
-                $ homework_submitted += 1
-                $ change_stats(minutes=150, energy=-23, grades=5)
-                "The submission confirmation arrives just before midnight."
-            "Submit what you have and get some sleep.":
-                $ change_stats(minutes=25, energy=14, grades=-7)
-                $ late_projects += 1
-                "The assignment is incomplete, but you preserve time for recovery."
-            "Ask for a late submission and accept the possibility of a penalty.":
-                $ accommodations_requested = True
-                $ change_stats(minutes=20, energy=11, grades=-3)
-                $ late_projects += 1
-                "You send the email. The outcome is uncertain."
+        "Sleep early and leave tomorrow's preparation unfinished.":
+            $ change_stats(energy=17, food=-5)
+            "You choose rest, knowing you'll need to prepare between classes."
+        "Prepare for tomorrow's circuits discussion.":
+            $ friday_test_preparation += 2
+            $ change_stats(energy=-12, water=-5)
+            "You feel more confident about circuits, but it's a late night."
+        "Call a friend you've barely seen this week.":
+            $ change_stats(energy=-7, friends=10)
+            "You reconnect. The conversation runs longer than expected."
+    if energy <= 0:
+        jump unseen_ambulance
+    if grades < 65:
+        jump unseen_dismissal
+    if friends <= 0:
+        jump unseen_isolation
     jump tuesday
 
 label tuesday:
     $ day = 2
     $ clock = 540
     scene bg dorm
+    $ care_completed = []
+    $ symptom_load = unseen_daily_load()
+    $ change_stats(energy=-symptom_load)
+    $ renpy.call_screen("unseen_daily_tasks")
     "TUESDAY — 9:00 AM"
-    "ENEE222 appears at 10:00, overlapping with CMSC216 lecture at 11:00. ENEE244 starts at 2:00, followed by PHYS161 discussion at 4:00."
-    "The overlap means you can't fully attend both morning classes."
+    call unseen_incident
+    "Today includes ENEE222 discussion and CPBE225. There's a short circuits problem set due."
+    $ assignments_total += 1
     menu:
-        "Prioritize CMSC216 lecture and ask for ENEE222 notes.":
+        "Complete the problem set before discussion.":
+            $ assignments_done += 1
+            $ change_stats(minutes=110, energy=-14, grades=2, food=-9)
+            $ friday_test_preparation += 2
+            "The answers take longer than expected. You head out without much downtime."
+        "Eat and hydrate, then submit what you already finished.":
+            $ change_stats(minutes=110, energy=6, food=18, water=15, grades=-2)
+            "You make it to class feeling more prepared physically, but the assignment is incomplete."
+        "Go to office hours for the hardest problems and submit afterward.":
+            $ assignments_done += 1
+            $ change_stats(minutes=130, energy=-8, grades=2, water=-5)
+            $ friday_test_preparation += 3
+            "You understand why your original method didn't work."
+    scene bg classroom
+    $ clock = 750
+    "12:30 PM — ENEE222 Discussion"
+    "Your TA writes: 'Find the derivative of f(x) = x² sin(x).'"
+    menu:
+        "2x sin(x) + x² cos(x)":
+            $ quiz_points += 1
+            $ friday_test_preparation += 2
+            "Correct. The product rule differentiates one factor at a time."
+        "2x cos(x)":
+            $ friday_test_preparation += 0
+            "Not quite. You differentiated the two factors together instead of using the product rule."
+        "x² cos(x)":
+            "Not quite. You forgot the derivative of x² in the first product-rule term."
+    $ quiz_total += 1
+    "The TA moves on to the next example."
+    menu:
+        "Stay for the full discussion and CPBE225 afterward.":
+            $ class_attendance += 2
+            $ change_stats(minutes=155, energy=-21, food=-12, water=-12)
+            $ friday_test_preparation += 1
+            "You take solid notes. You're drained by the end."
+        "Take a break between classes and arrive late to policy.":
             $ class_attendance += 1
             $ missed_classes += 1
-            $ change_stats(minutes=165, energy=-15, grades=1, friends=2)
-            "You keep up with programming, but circuits is harder to follow tonight."
-        "Attend ENEE222, leave early, and catch the second half of CMSC216.":
+            $ change_stats(minutes=155, energy=-4, food=8, water=8)
+            "You catch the policy discussion halfway through."
+        "Ask for notes and skip policy to recover.":
             $ class_attendance += 1
             $ missed_classes += 1
-            $ change_stats(minutes=165, energy=-23, grades=2)
-            "You cover parts of both, but travel makes it exhausting."
-        "Contact both instructors about the conflict and arrange an alternative.":
             $ accommodations_requested = True
-            $ campus_support = True
-            $ change_stats(minutes=165, energy=-9, grades=0)
-            "You begin sorting out the conflict. Not everything is resolved today."
-    scene bg classroom
-    $ clock = 840
-    "2:00 PM — ENEE244 Lecture, CHE 2108"
-    "A Boolean-logic exercise appears on the board: What is 1 AND 0?"
+            $ change_stats(minutes=155, energy=14, food=9)
+            "You recover, but will need to catch up on the assigned debate."
+    scene bg cafe
+    $ clock = 1080
+    "6:00 PM — Rowan texts: 'Come to the club fair with me? I don't want to go alone.'"
+    "You want to find your community, but your week is already full."
     menu:
-        "0":
-            $ test_correct += 1
-            $ change_stats(energy=-7, grades=2)
-            "Correct. AND is true only when both inputs are true."
-        "1":
-            $ change_stats(energy=-7, grades=-2)
-            "Not quite. Both inputs must be 1 for AND to output 1."
-        "Ask a classmate to explain the truth table.":
-            $ change_stats(energy=-7, friends=5, grades=0)
-            "You understand it after talking through the table."
-    $ test_total += 1
-    $ class_attendance += 1
-    scene bg classroom
-    $ clock = 960
-    "4:00 PM — PHYS161 Discussion, PHY 1402"
-    "You still have an ENEE222 problem set to complete."
-    menu:
-        "Attend discussion, then finish the problem set late tonight.":
-            $ class_attendance += 1
-            $ change_stats(minutes=160, energy=-26, grades=5, food=-11)
-            $ homework_submitted += 1
-            "You complete both, but it's been a very long day."
-        "Attend discussion, then study with Rowan and submit partial work.":
-            $ class_attendance += 1
-            $ change_stats(minutes=160, energy=-14, grades=-4, friends=13)
-            "Rowan helps you understand the formulas. Some answers remain unfinished."
-        "Skip discussion and use the time to finish the problem set and rest.":
-            $ missed_classes += 1
-            $ homework_submitted += 1
-            $ change_stats(minutes=160, energy=8, grades=1)
-            "You finish the assignment, but need to review the physics problems later."
-    scene bg campus
-    $ clock = 1140
-    "7:00 PM — Rowan invites you to explore student clubs."
-    menu:
-        "Go to the club fair together.":
-            $ change_stats(minutes=60, energy=-11, friends=8)
+        "Go to the club fair and choose a group.":
+            $ change_stats(minutes=75, energy=-11, friends=6)
             jump club_fair
-        "Browse clubs online and ask Rowan for recommendations.":
-            $ change_stats(minutes=20, energy=6, friends=3)
+        "Ask Rowan to send you the club list so you can choose from home.":
+            $ change_stats(minutes=20, energy=5, friends=1)
+            "Rowan sends photos of the tables and tells you about the conversations."
             jump club_fair
-        "Skip clubs for now and catch up on classwork.":
-            $ change_stats(minutes=90, energy=-10, grades=3, friends=-7)
+        "Decline for now and spend the evening catching up.":
+            $ change_stats(minutes=90, energy=-8, grades=1, friends=-5)
+            $ friday_test_preparation += 2
+            "You make academic progress, but you haven't found a club yet."
             $ club_name = "None"
-            jump wednesday
+            if energy <= 0:
+        jump unseen_ambulance
+    if grades < 65:
+        jump unseen_dismissal
+    if friends <= 0:
+        jump unseen_isolation
+    jump wednesday
 
 label club_fair:
-    "Pick a UMD organization for this week's club storyline. Meeting times are fictionalized for gameplay."
+    "You can commit to one campus organization. Its meeting will become part of your week."
+    "These are examples inspired by UMD student organizations; confirm current membership and meeting details through UMD's official student organization directory."
     menu:
-        "Technica — organize a technology event.":
+        "Technica — event organizing and technology":
             $ club_name = "Technica"
-        "Robotics at Maryland — build and test a robot.":
+        "Robotics at Maryland — engineering projects":
             $ club_name = "Robotics at Maryland"
-        "Hack4Impact — build technology for community partners.":
+        "Hack4Impact — technology for social impact":
             $ club_name = "Hack4Impact"
-        "Terps Racing — collaborate on an engineering build.":
+        "Terps Racing — engineering and team builds":
             $ club_name = "Terps Racing"
     $ club_commitment = 1
-    $ change_stats(friends=8)
-    "You join [club_name]. Your team has a Wednesday meeting and a Friday deliverable."
+    $ change_stats(friends=6)
+    "You join [club_name]. Your first meeting is Wednesday evening."
+    if energy <= 0:
+        jump unseen_ambulance
+    if grades < 65:
+        jump unseen_dismissal
+    if friends <= 0:
+        jump unseen_isolation
     jump wednesday
 
 label wednesday:
     $ day = 3
     $ clock = 480
     scene bg dorm
+    $ care_completed = []
+    $ symptom_load = unseen_daily_load()
+    $ change_stats(energy=-symptom_load)
+    $ renpy.call_screen("unseen_daily_tasks")
     "WEDNESDAY — 8:00 AM"
-    "ENEE244 discussion at 9; CMSC216 discussion at 10; CPBE225 at 11; ENEE222 at 12:30; PHYS161 at 2; and CPBE225 lab at 5."
-    "It's the most packed day of your week."
+    call unseen_incident
+    "CMSC216 lecture and discussion are followed by circuits at noon. Your club meets this evening."
+    "A friend texts: 'You've been distant lately. Are we okay?'"
     menu:
-        "Prepare food, water, and a plan for breaks before leaving.":
-            $ change_stats(minutes=50, energy=8, food=16, water=18, grades=-1)
-            "Preparation takes time, but you know where your breaks might fit."
-        "Review ENEE244 logic notes until you have to leave.":
-            $ change_stats(minutes=50, energy=-9, food=-9, grades=3)
-            "You feel ready for discussion but have less room for anything unexpected."
-        "Ask a classmate to share notes for one morning session.":
-            $ change_stats(minutes=50, energy=5, friends=5, grades=-2)
-            $ accommodations_requested = True
-            "Your classmate agrees. You'll owe them a favor later."
+        "Explain that managing symptoms and deadlines has been difficult.":
+            $ honest_conversation = True
+            $ change_stats(minutes=15, friends=11, energy=-2)
+            "Your friend replies: 'I didn't know. We can plan something low-key.'"
+        "Say everything is fine so you don't worry them.":
+            $ change_stats(minutes=5, friends=-5)
+            "The conversation ends, but the misunderstanding remains."
+        "Promise to hang out tonight, even though you're not sure you can.":
+            $ change_stats(minutes=5, friends=3)
+            "Your friend is excited. Now you have another commitment."
+            $ social_notes.append("Promised a Wednesday hangout")
     scene bg classroom
-    $ clock = 540
-    "9:00 AM — ENEE244 Discussion, EGR 1110"
-    "The TA asks: What is NOT(1)?"
-    menu:
-        "0":
-            $ test_correct += 1
-            $ change_stats(energy=-6, grades=2)
-            "Correct. NOT flips a Boolean value."
-        "1":
-            $ change_stats(energy=-6, grades=-2)
-            "Not quite. NOT(1) equals 0."
-    $ test_total += 1
-    $ class_attendance += 1
-    scene bg campus
     $ clock = 600
-    "10:00 AM — CMSC216 discussion, followed immediately by CPBE225 lecture."
+    "10:00 AM — CMSC216"
+    "The professor asks what the array expression arr[2] accesses in a zero-indexed array."
     menu:
-        "Attend both and use the short transition to get across campus.":
+        "The third element":
+            $ quiz_points += 1
+            $ friday_test_preparation += 2
+            "Correct. Index zero refers to the first element."
+        "The second element":
+            "Not quite. Index two is the third element."
+        "The array's length":
+            "Not quite. That would require a length operation or property."
+    $ quiz_total += 1
+    menu:
+        "Attend lecture, discussion, and circuits; eat afterward.":
+            $ class_attendance += 3
+            $ change_stats(minutes=210, energy=-29, food=-18, water=-17)
+            $ friday_test_preparation += 3
+            "You make every class. The afternoon feels long."
+        "Attend CMSC216 and circuits, but use discussion time for a break.":
             $ class_attendance += 2
-            $ change_stats(minutes=135, energy=-23, water=-13, grades=3)
-            "You get there, but the morning feels relentless."
-        "Attend CMSC216 and take a proper break instead of CPBE225.":
-            $ class_attendance += 1
             $ missed_classes += 1
-            $ change_stats(minutes=135, energy=12, food=10, water=12, grades=-5)
-            "You feel more capable afterward, but CPBE225 notes are missing."
-        "Skip CMSC216, attend CPBE225, and use the first hour to recover.":
-            $ missed_classes += 1
-            $ class_attendance += 1
-            $ change_stats(minutes=135, energy=9, food=7, grades=-3)
-            "You make the later class and plan to catch up on programming."
-    scene bg classroom
-    $ clock = 750
-    "12:30 PM — ENEE222 Lecture, KEB 1110; PHYS161 follows at 2:00."
-    "You have a short window to eat, and Mira wants to know if Friday plans are still happening."
-    menu:
-        "Attend both classes and postpone lunch.":
+            $ change_stats(minutes=210, energy=-11, food=9, water=12)
+            $ friday_test_preparation += 1
+            "You preserve some energy, but must get discussion notes later."
+        "Attend discussion and circuits; review the lecture recording later.":
             $ class_attendance += 2
-            $ change_stats(minutes=150, energy=-23, food=-19, water=-14, grades=4, friends=-5)
-            "You keep up academically. Mira's message remains unanswered."
-        "Eat with Mira, attend physics, and miss circuits.":
-            $ class_attendance += 1
             $ missed_classes += 1
-            $ change_stats(minutes=150, energy=-7, food=18, water=12, grades=-6, friends=13)
-            "Mira seems relieved. You need to catch up on ENEE222."
-        "Attend circuits, then take a recovery break instead of physics.":
-            $ class_attendance += 1
-            $ missed_classes += 1
-            $ change_stats(minutes=150, energy=8, food=7, water=10, grades=-4)
-            "You preserve some capacity for the evening lab."
-    scene bg classroom
-    $ clock = 1020
-    "5:00 PM — CPBE225 Lab, TWS 0320"
-    "Your lab partner is counting on you to help collect data."
+            $ change_stats(minutes=210, energy=-13, food=7, water=8)
+            $ friday_test_preparation += 2
+            "You trade live lecture time for a more manageable morning."
+    scene bg library
+    $ clock = 960
+    "4:00 PM — You have a programming quiz to prepare for, and the club meeting is approaching."
+    $ assignments_total += 1
     menu:
-        "Stay for the full lab and finish the analysis tonight.":
-            $ class_attendance += 1
-            $ homework_submitted += 1
-            $ change_stats(minutes=140, energy=-25, grades=7, friends=3)
-            "You complete the lab report, but the late finish costs you."
-        "Ask your partner to divide the work and complete your portion later.":
-            $ class_attendance += 1
-            $ change_stats(minutes=100, energy=-13, grades=2, friends=7)
-            $ thursday_deadline = True
-            "Your partner agrees, but expects your section by tomorrow."
-        "Leave early without discussing it with your partner.":
-            $ missed_labs += 1
-            $ change_stats(minutes=50, energy=12, grades=-12, friends=-15)
-            "Your partner is upset and the lab grade takes a serious hit."
+        "Finish the coding practice assignment before the meeting.":
+            $ assignments_done += 1
+            $ change_stats(minutes=90, energy=-17, grades=2)
+            $ friday_test_preparation += 3
+            "You finish, but the club meeting now feels like a lot."
+        "Take a structured rest break, then finish part of the assignment.":
+            $ rested_today = True
+            $ change_stats(minutes=90, energy=15, grades=-1)
+            $ friday_test_preparation += 1
+            "You feel more able to focus, though some practice remains undone."
+        "Study with Rowan and trade help on difficult questions.":
+            $ assignments_done += 1
+            $ change_stats(minutes=90, energy=-11, friends=8, grades=1)
+            $ friday_test_preparation += 2
+            "You both learn something. It takes longer than studying alone."
     if club_name != "None":
         scene bg campus
-        $ clock = 1200
-        "8:00 PM — Your [club_name] team has a meeting."
+        $ clock = 1110
+        "6:30 PM — [club_name] meeting"
         menu:
-            "Attend and promise to deliver a substantial task by Friday.":
-                $ club_task = True
+            "Attend the full meeting and volunteer for a task.":
                 $ club_commitment += 2
-                $ change_stats(minutes=90, energy=-20, friends=12)
-                "Your team is excited. Your to-do list grows."
-            "Join remotely for a short check-in and accept a smaller task.":
-                $ club_task = True
+                $ change_stats(minutes=100, energy=-20, friends=13)
+                "You leave with a new responsibility and a few new contacts."
+            "Attend briefly, introduce yourself, then head home.":
                 $ club_commitment += 1
-                $ change_stats(minutes=35, energy=-6, friends=6)
-                "You contribute without staying for the full meeting."
-            "Explain that today's lab ran late and decline this meeting.":
-                $ change_stats(minutes=10, energy=6, friends=-4)
-                "The organizer understands, though you miss the team discussion."
+                $ change_stats(minutes=45, energy=-7, friends=7)
+                "You connect with people while respecting your limits."
+            "Message the organizer and ask for a recap instead.":
+                $ change_stats(minutes=15, energy=7, friends=-2)
+                "You stay involved remotely, but miss the informal conversations."
+    else:
+        "6:30 PM — Other students are heading to club meetings."
+        menu:
+            "Spend the evening reviewing circuits.":
+                $ friday_test_preparation += 3
+                $ change_stats(minutes=85, energy=-13)
+            "Take a longer break and reach out to a friend.":
+                $ change_stats(minutes=85, energy=15, friends=5)
+    if "Promised a Wednesday hangout" in social_notes:
+        "Your friend texts: 'Are we still hanging out?'"
+        menu:
+            "Be upfront and suggest a shorter meetup tomorrow.":
+                $ honest_conversation = True
+                $ change_stats(friends=5)
+                "Your friend appreciates having a concrete alternative."
+            "Go out tonight, even though your schedule is packed.":
+                $ change_stats(minutes=90, energy=-17, friends=10)
+                "You have fun. Tomorrow morning may be harder."
+            "Don't reply until tomorrow.":
+                $ change_stats(friends=-9)
+                "The unread message weighs on you."
+    if energy <= 0:
+        jump unseen_ambulance
+    if grades < 65:
+        jump unseen_dismissal
+    if friends <= 0:
+        jump unseen_isolation
     jump thursday
 
 label thursday:
     $ day = 4
     $ clock = 540
     scene bg dorm
+    $ care_completed = []
+    $ symptom_load = unseen_daily_load()
+    $ change_stats(energy=-symptom_load)
+    $ renpy.call_screen("unseen_daily_tasks")
     "THURSDAY — 9:00 AM"
-    "ENEE222 lab at 10:00 overlaps with CMSC216 lecture at 11:00. ENEE244 lecture begins at 2:00."
-    "Tomorrow brings a PHYS161 quiz and project deadlines."
-    if thursday_deadline:
-        "Your CPBE225 lab partner messages: 'Can you send your part of the analysis this morning?'"
-        menu:
-            "Finish your section before class, even if you're rushed.":
-                $ homework_submitted += 1
-                $ change_stats(minutes=75, energy=-16, grades=5, friends=5)
-                "Your partner thanks you."
-            "Explain that you need an extra day and offer to revise their section too.":
-                $ change_stats(minutes=15, grades=-4, friends=2)
-                "Your partner reluctantly agrees."
-            "Leave the message unanswered and focus on the morning lab.":
-                $ change_stats(minutes=10, grades=-7, friends=-16)
-                "Your partner submits without your section."
-    scene bg classroom
-    $ clock = 600
-    "10:00 AM — ENEE222 Lab, KEB 2107"
-    "You cannot fully attend this lab and the overlapping CMSC216 lecture."
+    call unseen_incident
+    "ENEE222 discussion and CPBE225 are on your calendar. Your professor also has office hours."
+    "The circuits quiz is tomorrow. Mira asks you to help prepare for a presentation."
     menu:
-        "Complete the lab and arrange to catch up on CMSC216.":
-            $ class_attendance += 1
-            $ missed_classes += 1
-            $ change_stats(minutes=115, energy=-23, grades=6)
-            "Your lab results are submitted, but you miss lecture examples."
-        "Attend CMSC216 and accept the missed ENEE222 lab penalty.":
-            $ class_attendance += 1
-            $ missed_labs += 1
-            $ change_stats(minutes=115, energy=-15, grades=-13)
-            "You understand the programming lecture. The lab penalty is substantial."
-        "Contact the instructors about the overlap and request a makeup arrangement.":
-            $ campus_support = True
-            $ accommodations_requested = True
-            $ change_stats(minutes=115, energy=-9, grades=-2)
-            "The request is documented, but approval is not automatic."
-    scene bg classroom
-    $ clock = 840
-    "2:00 PM — ENEE244 Lecture, CHE 2108"
-    "You have a digital-logic quiz coming up."
-    menu:
-        "Attend and work through the examples with a classmate.":
-            $ class_attendance += 1
-            $ change_stats(minutes=75, energy=-13, grades=3, friends=4)
-        "Attend, then leave promptly for a break.":
-            $ class_attendance += 1
-            $ change_stats(minutes=75, energy=-8, grades=1)
-        "Miss lecture to prepare for tomorrow's physics quiz.":
-            $ missed_classes += 1
-            $ change_stats(minutes=75, energy=-7, grades=-5)
-            $ friday_test_preparation += 3
-    scene bg library
-    $ clock = 1080
-    "6:00 PM — Rowan invites you to a study group. Mira has also asked whether you're free for dinner."
-    menu:
-        "Study with Rowan and turn down dinner with an explanation.":
-            $ honest_conversation = True
+        "Go to office hours before class and skip breakfast with Mira.":
+            $ change_stats(minutes=100, energy=-10, food=-9, friends=-3)
             $ friday_test_preparation += 4
-            $ change_stats(minutes=110, energy=-14, grades=3, friends=1)
-            "Mira wishes you luck on the quiz."
-        "Go to dinner with Mira and study briefly afterward.":
+            "Your professor helps you untangle a derivative problem."
+        "Eat with Mira and study together; miss office hours.":
+            $ change_stats(minutes=100, food=16, water=12, friends=12, energy=-5)
+            $ friday_test_preparation += 2
+            "You support each other, but your hardest question remains unresolved."
+        "Take a slower morning and email your professor a question.":
+            $ accommodations_requested = True
+            $ change_stats(minutes=100, energy=12, food=9, water=8)
             $ friday_test_preparation += 1
-            $ change_stats(minutes=120, energy=-12, food=17, friends=17)
-            "You feel connected, but less prepared for tomorrow."
-        "Study alone and ignore both messages.":
-            $ friday_test_preparation += 5
-            $ change_stats(minutes=130, energy=-20, grades=4, friends=-19)
-            "You cover the most material. Both friends feel pushed away."
-        "Take a restorative evening and send honest updates to both friends.":
+            "You send a specific question and wait for a reply."
+    scene bg classroom
+    $ clock = 750
+    "12:30 PM — ENEE222 discussion"
+    "A related-rates question asks: a 10-foot ladder leans against a wall. If its base is 6 feet from the wall, how high is the top?"
+    menu:
+        "8 feet":
+            $ quiz_points += 1
+            $ friday_test_preparation += 2
+            "Correct: 6² + 8² = 10²."
+        "4 feet":
+            "Not quite. Use the Pythagorean theorem with the ladder as the hypotenuse."
+        "16 feet":
+            "Not quite. The height cannot exceed the 10-foot ladder."
+    $ quiz_total += 1
+    menu:
+        "Attend discussion and policy, then rest afterward.":
+            $ class_attendance += 2
+            $ change_stats(minutes=160, energy=-17, water=-10, food=-10)
+            "You make both classes and plan a quieter evening."
+        "Attend discussion but use policy time to recover and catch up later.":
+            $ class_attendance += 1
+            $ missed_classes += 1
+            $ change_stats(minutes=160, energy=8, food=10, water=10)
+            "You will need to review the policy discussion."
+        "Ask for notes, rest now, and prepare for the quiz tonight.":
+            $ missed_classes += 2
+            $ change_stats(minutes=160, energy=15, food=8, water=10)
+            $ friday_test_preparation += 2
+            "You gain study time but miss both in-person sessions."
+    scene bg dorm
+    $ clock = 1140
+    "7:00 PM — Your friend has a birthday dinner tonight. Tomorrow is the circuits quiz."
+    menu:
+        "Go to the whole dinner, even if you study less.":
+            $ change_stats(minutes=160, energy=-22, friends=17, food=15)
+            $ friday_test_preparation -= 2
+            "You laugh more than you have all week. You get home late."
+        "Go for dessert and tell your friend why you need to leave early.":
+            $ change_stats(minutes=70, energy=-8, friends=10, food=5)
+            $ friday_test_preparation += 1
             $ honest_conversation = True
-            $ change_stats(minutes=80, energy=19, food=11, water=12, friends=4, grades=-2)
-            "You won't finish all the review, but you make a plan for tomorrow."
+            "Your friend appreciates seeing you, even briefly."
+        "Stay home and study; send a thoughtful birthday message.":
+            $ change_stats(minutes=120, energy=-15, friends=-5)
+            $ friday_test_preparation += 4
+            "You feel prepared, but you miss celebrating in person."
+    if energy <= 0:
+        jump unseen_ambulance
+    if grades < 65:
+        jump unseen_dismissal
+    if friends <= 0:
+        jump unseen_isolation
     jump friday
 
 label friday:
     $ day = 5
-    $ clock = 540
+    $ clock = 510
     scene bg dorm
-    "FRIDAY — 9:00 AM"
-    "Your only scheduled class is PHYS161 lecture at 2:00 PM, but you have a physics quiz and looming project responsibilities."
-    "Mira asks whether you still want to meet."
+    $ care_completed = []
+    $ symptom_load = unseen_daily_load()
+    $ change_stats(energy=-symptom_load)
+    $ renpy.call_screen("unseen_daily_tasks")
+    "FRIDAY — 8:30 AM"
+    call unseen_incident
+    "Today is the CMSC216 lecture, circuits lecture, and your ENEE222 quiz."
+    "You have also promised your club organizer an update, if you joined a club."
     menu:
-        "Spend the morning preparing for physics and skip breakfast with Mira.":
-            $ friday_test_preparation += 4
-            $ change_stats(minutes=130, energy=-18, food=-13, friends=-8, grades=2)
-            "Your review is thorough. Mira sounds disappointed."
-        "Meet Mira for breakfast and review notes afterward.":
+        "Eat, hydrate, and review one page of notes.":
+            $ change_stats(minutes=70, energy=4, food=16, water=17)
             $ friday_test_preparation += 1
-            $ change_stats(minutes=130, energy=-6, food=18, water=12, friends=15)
-            "You laugh together, then rush through the final practice problems."
-        "Take a quiet morning, eat, and prepare for the quiz in shorter blocks.":
-            $ friday_test_preparation += 2
-            $ change_stats(minutes=130, energy=11, food=15, water=15, friends=0)
-            "You don't review everything, but you arrive with a workable plan."
+            "You arrive with a little less review time but a steadier routine."
+        "Use every minute for last-minute studying.":
+            $ change_stats(minutes=70, energy=-12, food=-9, water=-10)
+            $ friday_test_preparation += 3
+            "You cover more material, but the morning feels intense."
+        "Ask for a quieter testing arrangement and take time to prepare.":
+            $ accommodations_requested = True
+            $ change_stats(minutes=70, energy=6, water=12)
+            $ friday_test_preparation += 1
+            "You confirm your testing arrangements. Planning ahead helps reduce uncertainty."
     scene bg classroom
-    $ clock = 840
-    "2:00 PM — PHYS161 Lecture, PHY 1410"
-    "Your quiz begins. These questions count toward your Grades score."
-    $ class_attendance += 1
-    $ change_stats(minutes=45, energy=-9)
-    "Question 1: A 2 kg object accelerates at 3 m/s². What is the net force?"
+    $ clock = 600
+    "10:00 AM — CMSC216"
     menu:
-        "6 N":
-            $ test_correct += 1
-            $ change_stats(grades=5)
-            "Correct. F = ma = 6 N."
-        "1.5 N":
-            $ change_stats(grades=-7)
-            "Not quite. Multiply mass by acceleration."
-        "9 N":
-            $ change_stats(grades=-7)
-            "Not quite. F = ma."
-    $ test_total += 1
-    "Question 2: A car moves at constant velocity. What is its net force?"
+        "Attend the lecture and review quiz material afterward.":
+            $ class_attendance += 1
+            $ change_stats(minutes=60, energy=-10, water=-5)
+            $ friday_test_preparation += 1
+        "Use lecture time to prepare for circuits, and catch up later.":
+            $ missed_classes += 1
+            $ change_stats(minutes=60, energy=-8)
+            $ friday_test_preparation += 2
+    scene bg classroom
+    $ clock = 720
+    "12:00 PM — ENEE222"
+    "It's time for the quiz. Your preparation matters, but so does what you've learned along the way."
+    $ quiz_total += 1
+    "Question 1: What is the derivative of f(x) = x³ + 2x?"
     menu:
-        "Zero":
-            $ test_correct += 1
-            $ change_stats(grades=5)
-            "Correct. Constant velocity means zero acceleration."
-        "Equal to its mass":
-            $ change_stats(grades=-7)
-            "Not quite. Mass and force are different quantities."
-        "Increasing over time":
-            $ change_stats(grades=-7)
-            "Not quite. Constant velocity requires no net force."
-    $ test_total += 1
-    "Question 3: A 10 N force acts right and a 4 N force acts left. What is the net force?"
+        "3x² + 2":
+            $ quiz_points += 1
+            "Correct."
+        "x² + 2":
+            "Not quite. The derivative of x³ is 3x²."
+        "3x + 2":
+            "Not quite. The exponent on x decreases by one."
+    $ quiz_total += 1
+    "Question 2: For f(x) = x² - 2 and x₀ = 1, what is the first Newton's Method approximation?"
     menu:
-        "6 N right":
-            $ test_correct += 1
-            $ change_stats(grades=5)
-            "Correct. The opposing forces subtract."
-        "14 N right":
-            $ change_stats(grades=-7)
-            "Not quite. The forces point in opposite directions."
-        "6 N left":
-            $ change_stats(grades=-7)
-            "The magnitude is right, but the larger force points right."
-    $ test_total += 1
-    "The quiz ends. You leave class wondering how the week added up."
-    if club_task:
-        scene bg campus
-        $ clock = 990
-        "4:30 PM — Your [club_name] organizer asks for the task you promised."
+        "3/2":
+            $ quiz_points += 1
+            "Correct. x₁ = 1 - (-1)/2 = 3/2."
+        "1/2":
+            "Not quite. Subtract the entire fraction f(x₀)/f'(x₀)."
+        "2":
+            "Not quite. Newton's Method gives 3/2 after one step."
+    $ quiz_total += 1
+    "Question 3: Use linear approximation at x = 16 to estimate sqrt(17)."
+    menu:
+        "33/8":
+            $ quiz_points += 1
+            "Correct: 4 + (1/8)(1) = 33/8."
+        "17/4":
+            "Not quite. The slope at x = 16 is 1/8."
+        "4":
+            "Not quite. Four is the value at the base point, not the estimate."
+    $ quiz_total += 1
+    "Question 4: A 10-foot ladder has its base 6 feet from the wall. If the base moves outward at 2 ft/s, what is dy/dt?"
+    menu:
+        "-3/2 ft/s":
+            $ quiz_points += 1
+            "Correct. At y = 8, dy/dt = -(6/8)(2) = -3/2."
+        "3/2 ft/s":
+            "The magnitude is right, but the top is moving down, so the rate is negative."
+        "-2 ft/s":
+            "Not quite. Differentiate x² + y² = 100 with respect to time."
+    $ quiz_total += 1
+    "The quiz is over. You have done what you could with the time and resources available."
+    if club_name != "None":
+        "Your [club_name] organizer asks if you can help with a weekend task."
         menu:
-            "Finish it now, even if you miss plans with Mira.":
+            "Take the task and rearrange your weekend plans.":
                 $ club_commitment += 2
-                $ change_stats(minutes=130, energy=-23, grades=1, friends=-12)
-                "Your team appreciates the work. Mira waited for you."
-            "Ask the organizer to share the task and offer a partial deliverable.":
+                $ change_stats(energy=-10, friends=7)
+                "You accept. You will need to manage the added commitment."
+            "Offer a smaller task with a realistic deadline.":
                 $ club_commitment += 1
-                $ change_stats(minutes=75, energy=-10, friends=6)
-                "The team adapts. You still have some work to do."
-            "Disappear and leave the task unfinished.":
-                $ change_stats(minutes=10, energy=6, friends=-21)
-                "The organizer has to scramble to cover your commitment."
+                $ change_stats(friends=5)
+                "The organizer agrees. You have a manageable contribution."
+            "Decline this weekend and explain your workload.":
+                $ change_stats(energy=5, friends=-1)
+                "You communicate your limits clearly."
     scene bg evening
-    $ clock = 1140
-    "7:00 PM — The week is finally over."
-    "The choices you made shaped more than your calendar."
+    $ clock = 1080
+    "FRIDAY — 6:00 PM"
+    "The week is ending. Not every decision worked out exactly as you hoped."
+    if energy <= 0:
+        jump unseen_ambulance
+    if grades < 65:
+        jump unseen_dismissal
+    if friends <= 0:
+        jump unseen_isolation
     jump weekly_reflection
 
 label weekly_reflection:
-    scene bg dorm
+    # A transparent prototype grade model: the player begins at 85.
+    # Homework completion, practice quizzes, and preparation all contribute.
+    $ homework_fraction = float(assignments_done) / max(1, assignments_total)
+    $ quiz_fraction = float(quiz_points) / max(1, quiz_total)
+    $ earned = int(round((homework_fraction - 0.5) * 8 + (quiz_fraction - 0.5) * 10 + max(-3, min(5, friday_test_preparation // 3)) - missed_classes))
+    $ grades = max(0, min(100, grades + earned))
     "WEEK ONE — REFLECTION"
-    "Classes attended: [class_attendance]. Missed class sessions: [missed_classes]. Missed labs: [missed_labs]."
-    "Assignments completed or submitted: [homework_submitted]. Quiz questions answered correctly: [test_correct] out of [test_total]."
+    "Assignments completed: [assignments_done] out of [assignments_total]."
+    "Practice and quiz questions correct: [quiz_points] out of [quiz_total]."
+    "Classes attended: [class_attendance]. Class sessions missed: [missed_classes]."
+    "Your current Grades score is [grades]/100, and your Friends score is [friends]/100."
     if club_name != "None":
-        "You joined [club_name] and earned [club_commitment] club contribution points."
+        "You joined [club_name] and built [club_commitment] club commitment points."
     else:
-        "You didn't join a club this week. You used that time for other priorities."
+        "You did not join a club this week. That choice left room for other priorities."
+    if accommodations_requested:
+        "You reached out for support or used a strategy to make the academic week more accessible."
+    else:
+        "You navigated the week without requesting additional support. That remains an option in future chapters."
     if honest_conversation:
-        "You had an honest conversation about your limits. Someone understood more than they did before."
+        "At least once, you were honest about what you needed. That opened the door to a more understanding relationship."
     else:
-        "Some of your friends still don't know what you're managing. That may shape next week's relationships."
-    if campus_support:
-        "You asked for help with a real scheduling conflict. Advocating for yourself was part of your academic work."
+        "Some people may not yet understand why your plans changed. A conversation could help in a future chapter."
     if energy < 25:
-        "You're ending the week with very little energy. Your next chapter would need to account for that."
-    "Final Grades: [grades]/100. Final Friends: [friends]/100. Energy: [energy]/100."
-    "You made it through Week One. That doesn't mean every choice was easy or every outcome was fair."
-    "WEEK ONE COMPLETE — This is the successful ending for the prototype."
+        "Your energy is low. The next chapter would begin with choices about recovery and commitments."
+    elif energy > 65:
+        "You end the week with some energy available, though that doesn't mean the week was easy."
+    else:
+        "You end the week somewhere in the middle: proud of some decisions and still thinking about others."
+    "There is no perfect score for living a full life. Grades and friendships matter, but neither tells the whole story."
+    "END OF WEEK ONE — Thank you for playing UNSEEN."
     menu:
-        "Replay and make different choices":
+        "Replay the week with different decisions":
             jump start
         "Return to the main menu":
             return
 
-label ending_ambulance:
+label unseen_incident:
+    if selected_condition == 0:
+        "You experience dizziness and visual dimming after standing. You sit down and ask someone nearby to stay with you."
+    elif selected_condition == 1:
+        "A headache flare makes light and sound difficult to tolerate. You consider the quiet room and your prescribed plan."
+    elif selected_condition == 2:
+        "A sudden tic episode interrupts a quiet room. You can step out, ask for accommodations, or explain it to a classmate."
+    elif selected_condition == 3:
+        "Widespread pain and fatigue make the next walk across campus feel overwhelming."
+    elif selected_condition == 4:
+        "Your balance feels less reliable today. You plan an accessible route and consider contacting your care team about changes."
+    else:
+        "Your glucose device alerts you to a reading that needs attention. You follow your own diabetes care plan."
+    menu:
+        "Pause and address your immediate needs.":
+            $ change_stats(minutes=25, energy=8, water=5)
+            "You take time to respond. You may need to adjust the rest of your schedule."
+        "Ask a friend or staff member for help with logistics.":
+            $ change_stats(minutes=15, energy=5, friends=5)
+            "Someone helps you find a quieter place or rearrange your plans."
+        "Keep going and try to deal with it after class.":
+            $ change_stats(minutes=5, energy=-17, grades=1)
+            "You save time now, but your symptoms make the next part of the day harder."
+    if energy <= 0:
+        jump unseen_ambulance
+    if grades < 65:
+        jump unseen_dismissal
+    if friends <= 0:
+        jump unseen_isolation
+    return
+
+label unseen_ambulance:
     hide screen unseen_hud
     scene bg evening
-    "The sounds around you blur. You lose consciousness."
-    "When you open your eyes, you're in an ambulance. A bystander called 911 after you fainted."
-    "A paramedic tells you that you're being evaluated. You think about the demands of the week and how difficult it was to find room for recovery."
-    "GAME OVER — AMBULANCE ENDING"
-    "In this fictional game, Energy reaching zero triggers this ending. Real fainting cannot be predicted by a game meter."
-    menu:
-        "Try again":
-            jump start
-        "Main menu":
-            return
+    "Your vision fades. When you become aware of your surroundings again, you are in an ambulance."
+    "A bystander called 911 after you collapsed. The paramedics are checking on you."
+    "GAME OVER — A medical emergency interrupted your semester."
+    "In real life, fainting or new severe symptoms deserve appropriate medical evaluation; game energy is not a medical predictor."
+    jump unseen_restart
 
-label ending_dismissal:
+label unseen_dismissal:
     hide screen unseen_hud
     scene bg dorm
-    "A university notice arrives. Your academic standing has fallen below the threshold used in this game's fictional rules."
-    "The notice says that you have been academically dismissed. You stare at the screen, thinking about missed labs, deadlines, and impossible overlaps."
-    "GAME OVER — ACADEMIC DISMISSAL"
-    "This is a fictional rule for Unseen, not UMD's real academic dismissal policy."
-    menu:
-        "Try again":
-            jump start
-        "Main menu":
-            return
+    "An academic notice arrives. Under this game's fictional rules, your Grades score fell below 65."
+    "GAME OVER — Academic dismissal."
+    "Real UMD academic standing follows university policies, not this game's 65-point threshold."
+    jump unseen_restart
 
-label ending_isolation:
+label unseen_isolation:
     hide screen unseen_hud
     scene bg dorm
-    "Messages have stopped coming. You feel painfully isolated, and your mood has worsened over the week."
-    "You find it difficult to get out of bed or face another day on campus. You decide you cannot continue the semester as things are."
-    "The chapter ends here, but the character's story does not have to. Reaching out for support and reconnecting are possible next steps."
-    "GAME OVER — ISOLATION ENDING"
-    "The Friends score is a fictional relationship mechanic, not a measure of depression or a person's worth."
+    "The messages have stopped. You feel isolated and overwhelmed, and decide you cannot continue the semester as it is."
+    "GAME OVER — You withdraw from the semester to seek support and a different path forward."
+    "This is a fictional ending. Friendship scores do not determine depression, and support can be found even during isolation."
+    jump unseen_restart
+
+label unseen_restart:
     menu:
         "Try again":
             jump start
-        "Main menu":
+        "Return to main menu":
             return
