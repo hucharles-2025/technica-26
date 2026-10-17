@@ -1,0 +1,4 @@
+*.rpyc
+/game/saves.
+/game/cache/
+.pyc
