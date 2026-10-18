@@ -497,7 +497,7 @@ def draw_game_over(surface):
             "YOU FLUNKED OUT",
             [
                 "Your grades fell below the required GPA threshold.",
-                "You lost your scholarshipand flunked out of school.",
+                "You lost your scholarship and flunked out of school.",
                 "Managing your health and academics became overwhelming."
             ]
         ),
@@ -613,26 +613,28 @@ def main():
                 return {k: di[k] for k in keys if k in di}
             game_state_before = copy.deepcopy(_pluck_dict_keys(GAME_STATE, ["tasks", "active_task_set", "awaiting_task_sets"]))
             compiled_rules.handle_minute(GAME_STATE)
+            check_game_over()
             if _pluck_dict_keys(GAME_STATE, ["tasks", "active_task_set", "awaiting_task_sets"]) != game_state_before:
                 # The CRU changed the state, need to refresh the task list 
                 print("[Compiled Rules Unit Interface] CRU handle_minute() changed task list, requesting task list redraw.")
                 ui.refresh()
             # time.sleep(REAL_SECS_BETWEEN_GAME_MINS)
 
-            # 4. See if any queued tasks can be initiated because they arrived 
-            # at the correct locatoin or because the start time arrived
-            awaiting_task_set_rewrite = []
-            for taskid in GAME_STATE["awaiting_task_set"]:
-                retcode, msg = add_to_task_set(GAME_STATE, taskid)
-                if retcode == 0:
-                    ui.refresh()
-                elif retcode in [4,5,6]: 
-                    # ONLY keep it on queue if it's still too early or not the right place -- if there's 
-                    # a mutex violation, it's too late somehow, etc., then remove it
-                    awaiting_task_set_rewrite.append(taskid)
-                else:
-                    print(f"[Task Mgmt] Tried to unload task {taskid} from queue but got msg {retcode, msg}")
-            GAME_STATE["awaiting_task_set"] = awaiting_task_set_rewrite
+            # 4. See if any queued tasks can be initiated because they arrived
+            if GAME_OVER_REASON is None:
+                awaiting_task_set_rewrite = []
+                for taskid in GAME_STATE["awaiting_task_set"]:
+                    retcode, msg = add_to_task_set(GAME_STATE, taskid)
+                    if retcode == 0:
+                        ui.refresh()
+                    elif retcode in [4,5,6]: 
+                        # ONLY keep it on queue if it's still too early or not the right place -- if there's 
+                        # a mutex violation, it's too late somehow, etc., then remove it
+                        awaiting_task_set_rewrite.append(taskid)
+                    else:
+                        print(f"[Task Mgmt] Tried to unload task {taskid}" f"from queue but got msg {retcode, msg}")
+
+                GAME_STATE["awaiting_task_set"] = awaiting_task_set_rewrite
             check_game_over()
 
             if GAME_OVER_REASON is not None:
