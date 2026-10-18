@@ -66,6 +66,25 @@ ui = None
 # --------------------------------------------------------------------------
 GAME_STATE = compiled_rules.GAME_STATE_START
 # Helpers
+GAME_OVER_REASON = None
+GPA_FAIL_THRESHOLD = 2.0
+END_TIME = 21* 60
+
+def check_game_over():
+    global GAME_OVER_REASON
+    if GAME_OVER_REASON is not None:
+        return
+    GAME_STATE["energy"] = max(0, GAME_STATE["energy"])
+
+    if GAME_STATE["energy"] <= 0:
+        GAME_OVER_REASON = "fainted"
+    elif GAME_STATE["gpa"] < GPA_FAIL_THRESHOLD:
+        GAME_OVER_REASON = "flunked"
+    elif GAME_STATE["current_minute"] >= END_TIME:
+        GAME_OVER_REASON = "success"
+
+
+
 def lists_share_elems(list1, list2):
         return (not set(list1).isdisjoint(list2))
 def lists_share_mutex_groups(taskid1, taskid2):
@@ -459,6 +478,75 @@ def draw_backdrop(surface: pygame.Surface):
     scaled_image = pygame.transform.scale(backdrop_image, (BACKDROP_W, BACKDROP_H))
     surface.blit(scaled_image, (0, 0))
 
+def draw_game_over(surface):
+    endings = {
+        "fainted": (
+            "ambulance_bg.png",
+            "Pain",
+            "YOIU FAINTED",
+            [
+                "Your energy reached zero, and yoiu lost conciousness.",
+                "A bystander saw you collapse and called 911.",
+                "You slowly wake up in the back of an ambulance.",
+                "Your day has come to an unexpected end."
+            ]
+        ),
+        "flunked": (
+            "flunked_bg (1).png",
+            "Tired",
+            "YOU FLUNKED OUT",
+            [
+                "Your grades fell below the required GPA threshold.",
+                "You lost your scholarshipand flunked out of school.",
+                "Managing your health and academics became overwhelming."
+            ]
+        ),
+        "success": (
+            "dorm_room_bg.png",
+            "Happy",
+            "YOU MADE IT THROUGH THE DAY!",
+            [
+                "You made it to 9:00 PM!",
+                "Living with a chronic illness means facing challenges",
+                "that others may never see.",
+                "You experienced just one day with one condition.",
+                "We hope you now have a greater appreciation for the",
+                "unseen struggles of people with chronic illnesses."
+            ]
+        )
+    }
+    if GAME_OVER_REASON is None:
+        return
+    background, emotion, title, lines = endings[GAME_OVER_REASON]
+
+    bg = pygame.image.load(f"./assets/Sprites/{background}").convert()
+    bg = pygame.transform.scale(bg, (WINDOW_W, WINDOW_H)) 
+    surface.blit(bg, (0, 0))
+    person = pygame.image.load(f"./assets/Sprites/P{CHARACTER_NUMBER}_{emotion}.PNG").convert_alpha()
+    person = pygame.transform.scale_by(person, 0.28)
+    person_rect = person.get_rect(bottomright=(WINDOW_W - 10, WINDOW_H + 15))
+    surface.blit(person, person_rect)
+
+    panel_h = 210
+    panel = pygame.Surface(
+        (WINDOW_W-30, panel_h), pygame.SRCALPHA
+    )
+
+    pygame.draw.rect(panel, (15, 17, 30, 225), panel.get_rect(), border_radius=15)
+
+    panel_x = 15
+    panel_y = WINDOW_H - panel_h - 15
+    surface.blit(panel, (panel_x, panel_y))
+    title_font = pygame.font.SysFont("Calibri", 28, bold=True)
+    body_font = pygame.font.SysFont("Calibri", 19)
+
+    title_surface = title_font.render(title, True, (255, 255, 170))
+    surface.blit(title_surface, (panel_x + 22, panel_y + 16))
+
+    for i, line in enumerate(lines):
+        text_surface = body_font.render(line, True, (255, 255, 255))
+        surface.blit(text_surface, (panel_x + 22, panel_y + 57 + i * 23))
+
 def main():
     global ui
     pygame.display.set_caption("Unseen")
@@ -486,7 +574,15 @@ def main():
 
     while running:
         dt = clock.tick(FPS) / 1000.0
-
+        check_game_over()
+        if GAME_OVER_REASON is not None:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+            if running:
+                draw_game_over(window)
+                pygame.display.update()
+            continue
         # ---- input ----
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -501,7 +597,7 @@ def main():
         if frame_count % 15 == 0:            
             # 1. Consume a certain amount of food, water and energy according to the burn rate
             # set by the AI
-            GAME_STATE["energy"] -= GAME_STATE["energy_burn_rate"]
+            GAME_STATE["energy"] = max(0, GAME_STATE["energy"] - GAME_STATE["energy_burn_rate"])
             GAME_STATE["water"] -= GAME_STATE["water_burn_rate"]
             GAME_STATE["food"] -= GAME_STATE["food_burn_rate"]
 
@@ -537,6 +633,13 @@ def main():
                 else:
                     print(f"[Task Mgmt] Tried to unload task {taskid} from queue but got msg {retcode, msg}")
             GAME_STATE["awaiting_task_set"] = awaiting_task_set_rewrite
+            check_game_over()
+
+            if GAME_OVER_REASON is not None:
+                draw_game_over(window)
+                pygame.display.update()
+                frame_count += 1
+                continue
 
         # ---- draw ----
         # (DO NOT CHANGE THE ORDER THESE ARE RENDERED! For instance, 
