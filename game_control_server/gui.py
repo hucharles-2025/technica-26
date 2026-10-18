@@ -19,6 +19,8 @@ import dialogs
 
 pygame.init()
 
+CHARACTER_NUMBER = dialogs.ask("Choose a character.", ["1", "2", "3", "4"])
+
 # --------------------------------------------------------------------------
 # Layout constants
 # --------------------------------------------------------------------------
@@ -457,7 +459,6 @@ def draw_backdrop(surface: pygame.Surface):
     scaled_image = pygame.transform.scale(backdrop_image, (BACKDROP_W, BACKDROP_H))
     surface.blit(scaled_image, (0, 0))
 
-
 def main():
     global ui
     pygame.display.set_caption("Unseen")
@@ -497,7 +498,7 @@ def main():
         # ---- advance time in simulation ----
         manager.update(dt)
         
-        if frame_count % 10 == 0:            
+        if frame_count % 15 == 0:            
             # 1. Consume a certain amount of food, water and energy according to the burn rate
             # set by the AI
             GAME_STATE["energy"] -= GAME_STATE["energy_burn_rate"]
@@ -511,7 +512,7 @@ def main():
 
             # 3. Run all custom logic then tx data
             GAME_STATE["current_minute"] += 1
-            print(GAME_STATE["current_minute"])
+            # print(GAME_STATE["current_minute"])
             def _pluck_dict_keys(di, keys):
                 return {k: di[k] for k in keys if k in di}
             game_state_before = copy.deepcopy(_pluck_dict_keys(GAME_STATE, ["tasks", "active_task_set", "awaiting_task_sets"]))
@@ -545,8 +546,24 @@ def main():
         draw_backdrop(window)
         text_surface = FONT.render(f"Time: {get_time_string(GAME_STATE['current_minute'])}", True, (255, 255, 255), (0, 0, 0))
         window.blit(text_surface, (PAD , PAD))
+        if GAME_STATE["energy"] <= 40:
+            emotion = "Pain"
+        elif GAME_STATE["energy"] > 40 and GAME_STATE["energy"] < 60:
+            emotion = "Tired"
+        elif GAME_STATE["gpa"] < 2.8:
+            emotion = "Stressed"
+        elif GAME_STATE["energy"] > 85:
+            emotion = "Happy"
+        else:
+            emotion = "Neutral"
+        # print(emotion)
+        person_image = pygame.image.load(f"./assets/Sprites/P{CHARACTER_NUMBER}_{emotion}.PNG")
+        person_image = pygame.transform.scale_by(person_image, 0.25)
+        window.blit(person_image, (WINDOW_W - 550, 10))
         ui.banner.draw(window)
         manager.draw_ui(window)
+
+
         
 
         # advance frame counter 
