@@ -66,7 +66,8 @@ ui = None
 # --------------------------------------------------------------------------
 GAME_STATE = copy.deepcopy(compiled_rules.GAME_STATE_START)
 GAME_STATE["energy"]=100
-GAME_STATE["gpa"]=1.9
+GAME_STATE["gpa"]=4.0
+GAME_STATE["current_minute"]=21*60
 # Helpers
 GAME_OVER_REASON = None
 GPA_FAIL_THRESHOLD = 2.0
