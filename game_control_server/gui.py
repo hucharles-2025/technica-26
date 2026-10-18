@@ -611,10 +611,16 @@ def main():
             # print(GAME_STATE["current_minute"])
             def _pluck_dict_keys(di, keys):
                 return {k: di[k] for k in keys if k in di}
-            game_state_before = copy.deepcopy(_pluck_dict_keys(GAME_STATE, ["tasks", "active_task_set", "awaiting_task_sets"]))
+            game_state_before = copy.deepcopy(_pluck_dict_keys(GAME_STATE, ["tasks", "active_task_set", "awaiting_task_set"]))
             compiled_rules.handle_minute(GAME_STATE)
+            print("DEBUG ENERGY:", GAME_STATE["energy"])
+            print("DEBUG GPA:", GAME_STATE["gpa"])
+            print("DEBUG TIME:", GAME_STATE["current_minute"])
+
             check_game_over()
-            if _pluck_dict_keys(GAME_STATE, ["tasks", "active_task_set", "awaiting_task_sets"]) != game_state_before:
+            print("DEBUG GAME OVER REASON:", GAME_OVER_REASON)
+            
+            if _pluck_dict_keys(GAME_STATE, ["tasks", "active_task_set", "awaiting_task_set"]) != game_state_before:
                 # The CRU changed the state, need to refresh the task list 
                 print("[Compiled Rules Unit Interface] CRU handle_minute() changed task list, requesting task list redraw.")
                 ui.refresh()
