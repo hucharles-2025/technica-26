@@ -168,7 +168,8 @@ LOC_ARTS = "Arts Building"
 LOC_PHYS = "Physics Building"
 LOC_HEALTH = "Health & Biological Sciences Complex"
 LOC_DINING = "North Dining Hall"
-LOC_TRANSIT = "In Transit"                # set while a travel task is running
+LOC_PARATRANSIT = "In Paratransit Van"
+LOC_WALKING = "Walking Outside"                # set while a travel task is running
 
 LOCATION_NAMES = {
     "DORM": LOC_DORM, "EE": LOC_EE, "CS": LOC_CS, "ARTS": LOC_ARTS,
@@ -229,40 +230,40 @@ def _build_initial_tasks():
 
     # ---- Academic commitments (mutex "BODY": you can only be in one place) ----
     t["EE244"] = _task(
-        "EE244 Digital Logic Recitation",
+        "Go to EE244 Recitation",
         "9:00-9:50 AM, Electrical Engineering Building. A quiz starts at 9:05 AM: "
         "be here or your GPA drops. The rest of the class is mostly skippable.",
         start=EE244_START, end=EE244_END, deadline=EE244_END,
         required=EE244_END - EE244_START, mutex=["BODY"], location=LOC_EE)
     t["CS216"] = _task(
-        "CS216 Operating Systems Lecture",
+        "Go to CS216 Lecture",
         "10:00-10:50 AM, Computer Science Building. No penalty for missing it, but "
         "missing any of 10:03-10:13 means you will need an hour of study later.",
         start=CS216_START, end=CS216_END, deadline=CS216_END,
         required=CS216_END - CS216_START, mutex=["BODY"], location=LOC_CS)
     t["OC225A"] = _task(
-        "OC225A Oral Communications Lecture",
+        "Go to OC225A Lecture",
         "11:00 AM-12:15 PM, Arts Building. Full attendance is mandatory unless you "
         "have a health-center excuse note. Today is feedback day for your "
         "OC225B presentation: the more you skip, the worse it goes.",
         start=OC225A_START, end=OC225A_END, deadline=OC225A_END,
         required=OC225A_END - OC225A_START, mutex=["BODY"], location=LOC_ARTS)
     t["PH161"] = _task(
-        "PH161 Physics I Lecture",
+        "Go to PH161 Lecture",
         "2:00-2:50 PM, Physics Building. Attendance isn't recorded, but pop quizzes "
         "can happen in the last 10 minutes. Being out for any reason without an "
         "excuse note means a zero.",
         start=PH161_START, end=PH161_END, deadline=PH161_END,
         required=PH161_END - PH161_START, mutex=["BODY"], location=LOC_PHYS)
     t["OC225B"] = _task(
-        "OC225B Oral Communications Recitation",
+        "Go to OC225B Presentation",
         "5:00-6:50 PM, Arts Building. Full attendance mandatory unless excused. "
         "You give your presentation; the score depends on rehearsal and on how "
         "much feedback you got in OC225A.",
         start=OC225B_START, end=OC225B_END, deadline=OC225B_END,
         required=OC225B_END - OC225B_START, mutex=["BODY"], location=LOC_ARTS)
     t["REHEARSE_OC225B"] = _task(
-        "Rehearse OC225B presentation",
+        "Rehearse for OC225B Presentation",
         "About 50 minutes of practice. Only effective in the OC225A classroom "
         "(Arts Building). Must be done before OC225B starts at 5:00 PM.",
         end=OC225B_START, deadline=OC225B_START, required=REHEARSAL_MINUTES,
@@ -271,14 +272,14 @@ def _build_initial_tasks():
     # ---- EE222 open lab: three sessions, one shared assignment ----
     for tid, (s, e) in LAB_SESSIONS.items():
         t[tid] = _task(
-            "EE222 Signal Processing Open Lab (%s)" % _fmt(s),
+            "Go to EE222 Open Lab (%s)" % _fmt(s),
             "Open lab with a TA present. No attendance, but your major lab "
             "assignment (1.5-2.5 h of bench time) needs the special equipment. No food "
             "or drink in the lab; to drink, leave the lab and take a 'Lab break'.",
             start=s, end=e, deadline=e, required=e - s,
             mutex=["BODY", "LAB"], location=LOC_EE)
     t["LAB_BREAK"] = _task(
-        "Lab break (sign out, storage room, sign back in)",
+        "Take a lab break",
         "Needed before you can drink in the lab. Takes 3-5 minutes. Drink water "
         "while you do this.",
         required=random.randint(LAB_BREAK_MIN, LAB_BREAK_MAX),
@@ -286,7 +287,7 @@ def _build_initial_tasks():
 
     # ---- Body needs ----
     t["SLEEP"] = _task(
-        "Sleep / nap",
+        "Sleep",
         "Restores energy. Needs 60+ unbroken minutes to clear a migraine. "
         "Dorm only. Up to 8 hours total today.",
         required=SLEEP_CAP_MINUTES, mutex=["BODY", "SLEEP"], location=LOC_DORM)
@@ -472,6 +473,7 @@ def _start_trip(state, tid, mode):
 
     effective_mode = mode
     if mode == "walk":
+        state["location"] = LOC_WALKING
         total, blocked = _roll_walk()
         if blocked:
             SAY("An elevator is out / a ramp is blocked. The walk to %s will take %d minutes."
@@ -480,6 +482,7 @@ def _start_trip(state, tid, mode):
             SAY("You set off on foot for %s. About %d minutes." % (dest, total))
     else:
         r = random.random()
+        state["location"] = LOC_PARATRANSIT
         if r < PARA_CANCEL_PROB:
             effective_mode = "walk"       # ride cancelled -> walk, with walking costs
             total, blocked = _roll_walk()
@@ -497,8 +500,6 @@ def _start_trip(state, tid, mode):
     task["time_spent"] = 0
     rt["travel"] = {"tid": tid, "mode": effective_mode, "origin": origin,
                     "dest": dest, "total": total}
-    state["location"] = LOC_TRANSIT
-
 
 def _handle_travel(state, now):
     rt = _RT

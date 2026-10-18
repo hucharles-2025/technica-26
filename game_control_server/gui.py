@@ -35,6 +35,28 @@ FPS = 60
 
 FONT = pygame.font.SysFont("Calibri", 30) 
 
+LOC_DORM = "Dorm"
+LOC_EE = "Electrical Engineering Building"
+LOC_CS = "Computer Science Building"
+LOC_ARTS = "Arts Building"
+LOC_PHYS = "Physics Building"
+LOC_HEALTH = "Health & Biological Sciences Complex"
+LOC_DINING = "North Dining Hall"
+LOC_PARATRANSIT = "In Paratransit Van"
+LOC_WALKING = "Walking Outside"
+
+IMAGE_FILENAMES = {
+    LOC_DORM: "dorm_room_bg.png",
+    LOC_EE: "classroom_bg.png",
+    LOC_CS: "classroom_bg.png",
+    LOC_ARTS: "classroom_bg.png",
+    LOC_PHYS: "classroom_bg.png",
+    LOC_HEALTH: "healthcenter_bg.png",
+    LOC_DINING: "jw_bg.png",
+    LOC_PARATRANSIT: "transit_bg.png",
+    LOC_WALKING: "walking_bg.png"
+}
+
 ui = None
 
 # --------------------------------------------------------------------------
@@ -55,33 +77,33 @@ def add_to_task_set(state, taskid):
 
     # 1. If this task is already in the active set, reject
     if (taskid in state["active_task_set"]):
-        return 1, "This task is already underway." 
+        return 1, "You're already working on this item!" 
 
     # 2. Check time: if it's too late, reject. Too early, place it in queue. Just right, 
     # add it to active if it doesn't violate any mutexes
     print(f"Current location: {state['location']}, needed location: {tba_task_data['location']}")
     curr_time = state["current_minute"]
-    if (tba_task_data["timeblockstart"] is not None and curr_time > tba_task_data["timeblockend"]):
-        return 3, "It is too late to do this task."
+    if (tba_task_data["timeblockend"] is not None and curr_time > tba_task_data["timeblockend"]):
+        return 3, "The time window for doing this has already passed."
     elif tba_task_data["location"] is not None and state["location"] != tba_task_data["location"]:
         # If we're not in the right location, have it wait until we are
         if taskid not in state["awaiting_task_set"]:
             state["awaiting_task_set"].append(taskid)
-            return 6, "You are not in the correct location for this task."
+            return 6, f"You are not in the correct location for this task. You need to be at {tba_task_data['location']}."
         else:
-            return 5, "This task has already been queued for later."
-    elif (tba_task_data["timeblockend"] is not None and curr_time < tba_task_data["timeblockstart"]):
+            return 5, "This task is already on your to-do list for later."
+    elif (tba_task_data["timeblockstart"] is not None and curr_time < tba_task_data["timeblockstart"]):
         # Put it on the queue.
         if taskid not in state["awaiting_task_set"]:
             state["awaiting_task_set"].append(taskid)
-            return 4, "It is too early for this task, but it has been saved for later."
+            return 4, "It is too early to do this, but it is on your to-do list later."
         else:
-            return 5, "This task has already been queued for later."
+            return 5, "This task is already on your to-do list for later."
     else:            
         # Check mutex groups on the active set
         for k in state["active_task_set"]:
             if lists_share_mutex_groups(taskid, k):
-                return 2, f"Can't do this task at the same time as {state['tasks'][k]['shortdesc']}"
+                return 2, f"You can't do this at the same time as: {state['tasks'][k]['shortdesc']}"
 
         # Add it to the current tasks
         state["active_task_set"].append(taskid)
@@ -103,7 +125,7 @@ def cancel_task(state, taskid):
     # 2. Check to see if this is the type of task that can be interrupted after 
     # it has been entered into the active zone
     if active and not state["tasks"][taskid]["can_cancel"]:
-        return 2, "This task cannot be canceled after it has been started."
+        return 2, "You cannot stop this task once you've started."
     else:
         target_list.remove(taskid)
         return 0,f"OK (removal was from active task set? {active})"
@@ -431,7 +453,7 @@ class MigraineUI:
 def draw_backdrop(surface: pygame.Surface):
     """Placeholder for the 1920x1080 backdrop. Replace with your image/scene."""
     backdrop_rect = pygame.Rect(0, 0, BACKDROP_W, BACKDROP_H)
-    backdrop_image = pygame.image.load("./assets/Sprites/walking_bg.png")
+    backdrop_image = pygame.image.load(f"./assets/Sprites/{IMAGE_FILENAMES[GAME_STATE['location']]}")
     scaled_image = pygame.transform.scale(backdrop_image, (BACKDROP_W, BACKDROP_H))
     surface.blit(scaled_image, (0, 0))
 
@@ -444,7 +466,7 @@ def main():
     window = pygame.display.set_mode((WINDOW_W, WINDOW_H), pygame.SCALED | pygame.RESIZABLE)
     clock = pygame.time.Clock()
 
-    manager = pygame_gui.UIManager((WINDOW_W, WINDOW_H))
+    manager = pygame_gui.UIManager((WINDOW_W, WINDOW_H), "theme.json")
     frame_count = 0
     ui = MigraineUI(manager, GAME_STATE)
     ui.refresh()
@@ -475,7 +497,7 @@ def main():
         # ---- advance time in simulation ----
         manager.update(dt)
         
-        if frame_count % 25 == 0:            
+        if frame_count % 10 == 0:            
             # 1. Consume a certain amount of food, water and energy according to the burn rate
             # set by the AI
             GAME_STATE["energy"] -= GAME_STATE["energy_burn_rate"]
