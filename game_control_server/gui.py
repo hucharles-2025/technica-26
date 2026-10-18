@@ -64,7 +64,8 @@ ui = None
 # --------------------------------------------------------------------------
 # GLOBAL GAME STATE SETUP AND METHODS
 # --------------------------------------------------------------------------
-GAME_STATE = compiled_rules.GAME_STATE_START
+GAME_STATE = copy.deepcopy(compiled_rules.GAME_STATE_START)
+GAME_STATE["energy"]=0
 # Helpers
 GAME_OVER_REASON = None
 GPA_FAIL_THRESHOLD = 2.0
