@@ -10,8 +10,8 @@
         """Use a supplied character portrait, or a colored placeholder."""
         path = "images/" + filename
         if renpy.loadable(path):
-            return Transform(Image(path), fit="contain", xysize=(480, 720))
-        return Solid(tint, xysize=(420, 640))
+            return Transform(Image(path), fit="contain", xysize=(780, 760))
+        return Solid(tint, xysize=(780, 760))
 
     def change_stats(minutes=0, energy=0, water=0, food=0, grades=0, friends=0):
         store.clock += minutes
@@ -19,6 +19,38 @@
             ("food", food), ("grades", grades),
             ("friends", friends)):
             setattr(store, key, max(0, min(100, getattr(store, key) + delta)))
+        # Immediately resolve exhaustion, even in the middle of a day.
+        if store.energy <= 0 and getattr(store, "unseen_game_active", False):
+            renpy.jump("unseen_exhaustion")
+
+
+    def unseen_match_response(response, choices):
+        """Local best-fit interpretation until an AI response evaluator is connected."""
+        import re
+        words = set(re.findall(r"[a-z]+", response.lower()))
+        aliases = {
+            "rest": ("break", "sleep", "pause", "recover", "relax", "nap", "sit"),
+            "help": ("ask", "support", "assist", "contact", "message", "email"),
+            "attend": ("go", "class", "lecture", "participate"),
+            "study": ("review", "work", "prepare", "homework", "assignment"),
+            "friend": ("socialize", "meet", "hangout", "talk", "call"),
+            "eat": ("food", "meal", "lunch", "breakfast", "snack"),
+            "water": ("drink", "hydrate", "hydration"),
+            "skip": ("miss", "avoid", "stay", "leave"),
+        }
+        expanded = set(words)
+        for key, group in aliases.items():
+            if key in words or any(w in words for w in group):
+                expanded.update(group)
+                expanded.add(key)
+        ignore = set("the a an and or to of in for on at my your with from before after i would will do it is then".split())
+        scores = []
+        for choice in choices:
+            tokens = set(re.findall(r"[a-z]+", choice.lower())) - ignore
+            scores.append(len(tokens & expanded))
+        if not response.strip() or max(scores) == 0:
+            return 0
+        return scores.index(max(scores))
 
     def clock_label():
         hour = (store.clock // 60) % 24
@@ -47,6 +79,7 @@ default avatar_choice = 1
 default day = 1
 default clock = 480
 default energy = 75
+default unseen_game_active = False
 default water = 60
 default food = 80
 default grades = 85
@@ -250,34 +283,39 @@ screen unseen_hud():
 screen unseen_avatar_picker():
     modal True
     default index = 0
-    add Solid("#1E172BEF")
-    frame:
+    add Solid("#24182F")
+
+    # No outer frame or dialogue overlay: the portrait remains unobstructed.
+    vbox:
         xalign 0.5
         yalign 0.5
-        xsize 1560
-        ysize 880
-        background Solid("#30243F")
-        xpadding 42
-        ypadding 32
-        vbox:
-            spacing 18
-            text "CHOOSE YOUR CHARACTER" xalign 0.5 size 46 bold True color "#F5D9FF"
-            text "Use the arrows to browse. Portrait art can be replaced later." xalign 0.5 size 24 color "#E7D4F4"
-            hbox:
+        spacing 12
+        text "CHOOSE YOUR CHARACTER" xalign 0.5 size 52 bold True color "#F5D9FF"
+        text "Browse characters with the arrows" xalign 0.5 size 23 color "#E7D4F4"
+        hbox:
+            xalign 0.5
+            spacing 48
+            ysize 780
+            textbutton "❮":
+                yalign 0.5
+                action SetScreenVariable("index", (index - 1) % len(unseen_avatars))
+                text_size 78
+            add unseen_portrait(unseen_avatars[index][1], unseen_avatars[index][2]):
                 xalign 0.5
                 yalign 0.5
-                spacing 42
-                textbutton "❮" action SetScreenVariable("index", (index - 1) % len(unseen_avatars)) text_size 62
-                frame:
-                    xsize 700
-                    ysize 580
-                    background Solid("#443552")
-                    xpadding 14
-                    ypadding 14
-                    add unseen_portrait(unseen_avatars[index][1], unseen_avatars[index][2]) xalign 0.5 yalign 0.5
-                textbutton "❯" action SetScreenVariable("index", (index + 1) % len(unseen_avatars)) text_size 62
-            text unseen_avatars[index][0] xalign 0.5 size 34 color "#FFFFFF"
-            textbutton "SELECT CHARACTER" xalign 0.5 action Return(index + 1) text_size 30
+            textbutton "❯":
+                yalign 0.5
+                action SetScreenVariable("index", (index + 1) % len(unseen_avatars))
+                text_size 78
+        textbutton "SELECT CHARACTER":
+            xalign 0.5
+            action Return(index + 1)
+            text_size 32
+            text_color "#FFFFFF"
+            background Solid("#74529A")
+            hover_background Solid("#936DBA")
+            xpadding 32
+            ypadding 15
 
 screen unseen_condition_picker():
     modal True
@@ -286,62 +324,111 @@ screen unseen_condition_picker():
     frame:
         xalign 0.5
         yalign 0.5
-        xsize 1760
-        ysize 980
+        xsize 1700
+        ysize 960
         background Solid("#30243F")
-        xpadding 40
-        ypadding 26
+        xpadding 42
+        ypadding 28
         vbox:
-            spacing 15
-            text "CHOOSE AN EXPERIENCE" xalign 0.5 size 43 bold True color "#F5D9FF"
-            hbox:
+            xfill True
+            yfill True
+            spacing 12
+            text "CHOOSE AN EXPERIENCE" xalign 0.5 size 40 bold True color "#F5D9FF"
+            fixed:
                 xalign 0.5
-                spacing 20
-                textbutton "❮" action SetScreenVariable("index", (index - 1) % len(unseen_conditions)) text_size 56
-                text unseen_conditions[index]["name"] size 36 bold True color "#FFFFFF" xalign 0.5 xsize 1050 text_align 0.5
-                textbutton "❯" action SetScreenVariable("index", (index + 1) % len(unseen_conditions)) text_size 56
-            text unseen_conditions[index]["about"] xalign 0.5 xmaximum 1560 text_align 0.5 size 23 color "#EADFF0"
-            viewport:
-                xsize 1630
-                ysize 640
-                mousewheel True
-                draggable True
-                scrollbars "vertical"
-                vbox:
-                    spacing 15
-                    frame:
+                xfill True
+                ysize 82
+                textbutton "❮":
+                    xalign 0.22
+                    yalign 0.5
+                    action SetScreenVariable("index", (index - 1) % len(unseen_conditions))
+                    text_size 58
+                    text_color "#B9A8FF"
+                text unseen_conditions[index]["name"]:
+                    xalign 0.5
+                    yalign 0.5
+                    xmaximum 680
+                    text_align 0.5
+                    size 38
+                    bold True
+                    color "#FFFFFF"
+                textbutton "❯":
+                    xalign 0.78
+                    yalign 0.5
+                    action SetScreenVariable("index", (index + 1) % len(unseen_conditions))
+                    text_size 58
+                    text_color "#82E6F5"
+            text unseen_conditions[index]["about"]:
+                xalign 0.5
+                xmaximum 1500
+                text_align 0.5
+                size 21
+                color "#EADFF0"
+            frame:
+                xfill True
+                ysize 560
+                background Solid("#261D35")
+                xpadding 18
+                ypadding 12
+                viewport:
+                    id "condition_scroll"
+                    xfill True
+                    yfill True
+                    mousewheel True
+                    draggable True
+                    scrollbars "vertical"
+                    vbox:
                         xfill True
-                        background Solid("#483857")
-                        xpadding 25
-                        ypadding 15
-                        vbox:
-                            spacing 8
-                            text "POSSIBLE SYMPTOMS" size 28 bold True color "#F0C8FF"
-                            for item in unseen_conditions[index]["symptoms"]:
-                                text "• " + item size 22 color "#FFFFFF"
-                    frame:
-                        xfill True
-                        background Solid("#483857")
-                        xpadding 25
-                        ypadding 15
-                        vbox:
-                            spacing 8
-                            text "SELF-CARE AND SUPPORT OPTIONS" size 28 bold True color "#BFEAFF"
-                            for item in unseen_conditions[index]["needs"]:
-                                text "• " + item size 22 color "#FFFFFF"
-                    frame:
-                        xfill True
-                        background Solid("#483857")
-                        xpadding 25
-                        ypadding 15
-                        vbox:
-                            spacing 8
-                            text "SAMPLE DAILY TASK LIST" size 28 bold True color "#FFD2E3"
-                            for item in unseen_conditions[index]["schedule"]:
-                                text "□ " + item size 22 color "#FFFFFF"
-                    text "GAMEPLAY CHALLENGE: " + unseen_conditions[index]["challenge"] size 22 color "#FFFFFF"
-            text "Schedules are examples, not medical instructions. Follow your own clinician's plan." xalign 0.5 size 19 color "#E5C9E8"
-            textbutton "PLAY THIS EXPERIENCE" xalign 0.5 action Return(index) text_size 29
+                        spacing 12
+                        frame:
+                            xfill True
+                            background Solid("#483857")
+                            xpadding 24
+                            ypadding 14
+                            vbox:
+                                spacing 7
+                                text "POSSIBLE SYMPTOMS" size 26 bold True color "#F0C8FF"
+                                for item in unseen_conditions[index]["symptoms"]:
+                                    text "• " + item size 21 color "#FFFFFF"
+                        frame:
+                            xfill True
+                            background Solid("#483857")
+                            xpadding 24
+                            ypadding 14
+                            vbox:
+                                spacing 7
+                                text "SELF-CARE AND SUPPORT OPTIONS" size 26 bold True color "#BFEAFF"
+                                for item in unseen_conditions[index]["needs"]:
+                                    text "• " + item size 21 color "#FFFFFF"
+                        frame:
+                            xfill True
+                            background Solid("#483857")
+                            xpadding 24
+                            ypadding 14
+                            vbox:
+                                spacing 7
+                                text "SAMPLE DAILY TASK LIST" size 26 bold True color "#FFD2E3"
+                                for item in unseen_conditions[index]["schedule"]:
+                                    text "□ " + item size 21 color "#FFFFFF"
+                        frame:
+                            xfill True
+                            background Solid("#483857")
+                            xpadding 24
+                            ypadding 14
+                            text "GAMEPLAY CHALLENGE: " + unseen_conditions[index]["challenge"] size 21 color "#FFFFFF"
+            text "Schedules are examples, not medical instructions. Follow your own clinician's plan.":
+                xalign 0.5
+                size 18
+                color "#E5C9E8"
+            textbutton "PLAY THIS EXPERIENCE":
+                xalign 0.5
+                action Return(index)
+                text_size 28
+                text_color "#FFFFFF"
+                background Solid("#7653A5")
+                hover_background Solid("#9868C8")
+                xpadding 38
+                ypadding 12
 
 screen unseen_daily_tasks():
     modal True
@@ -370,19 +457,49 @@ screen unseen_daily_tasks():
             text "Other tasks can be completed later through story decisions." size 20 color "#CFC3D7"
             textbutton "START THE DAY" xalign 0.5 action Return() text_size 30
 
-# Make the default text box readable, without editing screens.rpy.
-style window:
-    background Solid("#211B2DEB")
-    xpadding 68
-    ypadding 35
+# Bottom-anchored dialogue card with consistent padding and readable text.
+screen say(who, what):
+    zorder 100
+    window:
+        id "window"
+        xalign 0.5
+        yalign 0.975
+        xsize 1600
+        yminimum 105
+        ymaximum 150
+        background Solid("#21172FF2")
+        left_padding 20
+        right_padding 20
+        top_padding 10
+        bottom_padding 10
 
-style say_dialogue:
-    color "#FFFFFF"
-    size 32
-
-style say_label:
-    color "#F0CFFF"
-    size 31
+        hbox:
+            xfill True
+            yalign 0.0
+            spacing 16
+            add Solid("#CDA4FF") xsize 4 ysize 82
+            vbox:
+                xfill True
+                yalign 0.0
+                spacing 3
+                if who is not None:
+                    text who:
+                        id "who"
+                        style "default"
+                        size 23
+                        bold True
+                        color "#E7C8FF"
+                        xalign 0.0
+                        yalign 0.0
+                text what:
+                    id "what"
+                    style "default"
+                    size 27
+                    color "#FCF8FF"
+                    xalign 0.0
+                    yalign 0.0
+                    text_align 0.0
+                    line_spacing 2
 
 style choice_button_text:
     color "#FFFFFF"
@@ -401,6 +518,7 @@ style choice_button:
 # All scores are game mechanics, not medical advice or predictions.
 
 label start:
+    $ unseen_game_active = False
     scene bg dorm
     $ day = 1
     $ clock = 480
@@ -410,8 +528,14 @@ label start:
     $ player_name = renpy.input("What should everyone call you?", length=24).strip()
     if not player_name:
         $ player_name = "Alex"
+    $ quick_menu = False
+    window hide
     $ avatar_choice = renpy.call_screen("unseen_avatar_picker")
     $ selected_condition = renpy.call_screen("unseen_condition_picker")
+    $ energy = 25 if selected_condition in (3, 4) else 75
+    $ unseen_game_active = True
+    window auto
+    $ quick_menu = True
     "You selected [unseen_conditions[selected_condition]['name']]. This story portrays one fictional experience, not everyone with the condition."
     "Self-care and symptom patterns differ between people. The task list is a game mechanic, not a treatment plan."
     show screen unseen_hud
@@ -430,88 +554,93 @@ label monday:
     call unseen_incident
     "Your CMSC216 discussion begins at 10:00. An ENEE222 assessment is coming up, and your CMSC216 programming assignment is due tonight."
     "You also promised Mira you'd get lunch together."
-    menu:
-        "Eat breakfast and pack water; leave less time to review code.":
-            $ change_stats(minutes=65, food=18, water=17, energy=3)
-            $ friday_test_preparation += 1
-            "You leave feeling more prepared for the physical demands of the morning, but your code review is rushed."
-        "Review your code before leaving; skip the slower morning routine.":
-            $ change_stats(minutes=65, food=-13, water=-10, energy=-9)
-            $ friday_test_preparation += 3
-            "You catch a tricky bug. The morning feels harder than you hoped."
-        "Ask your teaching assistant for an extension and take a measured morning.":
-            $ change_stats(minutes=65, food=10, water=10, energy=5)
-            $ accommodations_requested = True
-            "You send a message. Whether an extension is granted is not guaranteed, but you've communicated early."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Eat breakfast and pack water; leave less time to review code.', 'Review your code before leaving; skip the slower morning routine.', 'Ask your teaching assistant for an extension and take a measured morning.'])
+    if unseen_choice == 0:
+        $ change_stats(minutes=65, food=18, water=17, energy=3)
+        $ friday_test_preparation += 1
+        "You leave feeling more prepared for the physical demands of the morning, but your code review is rushed."
+    elif unseen_choice == 1:
+        $ change_stats(minutes=65, food=-13, water=-10, energy=-9)
+        $ friday_test_preparation += 3
+        "You catch a tricky bug. The morning feels harder than you hoped."
+    elif unseen_choice == 2:
+        $ change_stats(minutes=65, food=10, water=10, energy=5)
+        $ accommodations_requested = True
+        "You send a message. Whether an extension is granted is not guaranteed, but you've communicated early."
     scene bg campus
     $ clock = 590
     "9:50 AM — The Iribe Center"
     "The campus is busy. Your first lecture is about arrays and indexes."
-    menu:
-        "Attend CMSC216 and take notes, even though you feel worn down.":
-            $ class_attendance += 1
-            $ change_stats(minutes=55, energy=-13, water=-8)
-            "You understand the examples, but the long morning takes energy."
-        "Attend with a brief break and ask for the lecture notes afterward.":
-            $ class_attendance += 1
-            $ accommodations_requested = True
-            $ change_stats(minutes=55, energy=-7, water=-5)
-            "You miss a few minutes, then catch up using the notes."
-        "Return to your dorm and work through the lecture material later.":
-            $ missed_classes += 1
-            $ change_stats(minutes=55, energy=8)
-            $ friday_test_preparation -= 1
-            "Rest helps. Now you have an additional lecture to catch up on."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Attend CMSC216 and take notes, even though you feel worn down.', 'Attend with a brief break and ask for the lecture notes afterward.', 'Return to your dorm and work through the lecture material later.'])
+    if unseen_choice == 0:
+        $ class_attendance += 1
+        $ change_stats(minutes=55, energy=-13, water=-8)
+        "You understand the examples, but the long morning takes energy."
+    elif unseen_choice == 1:
+        $ class_attendance += 1
+        $ accommodations_requested = True
+        $ change_stats(minutes=55, energy=-7, water=-5)
+        "You miss a few minutes, then catch up using the notes."
+    elif unseen_choice == 2:
+        $ missed_classes += 1
+        $ change_stats(minutes=55, energy=8)
+        $ friday_test_preparation -= 1
+        "Rest helps. Now you have an additional lecture to catch up on."
     "11:00 AM — You have a discussion section, travel to circuits, and lunch to fit in."
-    menu:
-        "Go to discussion, take paratransit, and arrive at circuits on time.":
-            $ class_attendance += 2
-            $ change_stats(minutes=120, energy=-23, food=-13, water=-10)
-            $ friday_test_preparation += 2
-            "You make both classes. Mira texts: 'Still doing lunch?'"
-        "Go to discussion, eat with Mira, and arrive late to circuits.":
-            $ class_attendance += 1
-            $ missed_classes += 1
-            $ change_stats(minutes=120, energy=-9, food=20, water=9, friends=9)
-            "Lunch is wonderful. You miss the start of the circuits example."
-        "Take a break and eat before circuits; miss discussion.":
-            $ missed_classes += 1
-            $ class_attendance += 1
-            $ change_stats(minutes=120, energy=8, food=17, water=12, friends=-3)
-            "You arrive at circuits steadier, but your discussion notes are missing."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Go to discussion, take paratransit, and arrive at circuits on time.', 'Go to discussion, eat with Mira, and arrive late to circuits.', 'Take a break and eat before circuits; miss discussion.'])
+    if unseen_choice == 0:
+        $ class_attendance += 2
+        $ change_stats(minutes=120, energy=-23, food=-13, water=-10)
+        $ friday_test_preparation += 2
+        "You make both classes. Mira texts: 'Still doing lunch?'"
+    elif unseen_choice == 1:
+        $ class_attendance += 1
+        $ missed_classes += 1
+        $ change_stats(minutes=120, energy=-9, food=20, water=9, friends=9)
+        "Lunch is wonderful. You miss the start of the circuits example."
+    elif unseen_choice == 2:
+        $ missed_classes += 1
+        $ class_attendance += 1
+        $ change_stats(minutes=120, energy=8, food=17, water=12, friends=-3)
+        "You arrive at circuits steadier, but your discussion notes are missing."
     scene bg library
     $ clock = 900
     "3:00 PM — Your CMSC216 assignment is due tonight. Mira has invited you to study together."
     $ assignments_total += 1
-    menu:
-        "Finish the assignment alone while you still have momentum.":
-            $ assignments_done += 1
-            $ change_stats(minutes=120, energy=-18, food=-8, grades=2)
-            $ friday_test_preparation += 1
-            "You submit your work. Mira ends up studying with someone else."
-        "Study with Mira; ask for help, but submit a partially finished assignment.":
-            $ change_stats(minutes=120, energy=-11, food=-7, friends=10, grades=-2)
-            $ friday_test_preparation += 2
-            "You understand the material better, but some assignment points are left on the table."
-        "Request help and take a recovery break before finishing.":
-            $ assignments_done += 1
-            $ accommodations_requested = True
-            $ change_stats(minutes=150, energy=2, food=-6, grades=1, friends=-2)
-            "You work in shorter blocks and submit later in the evening."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Finish the assignment alone while you still have momentum.', 'Study with Mira; ask for help, but submit a partially finished assignment.', 'Request help and take a recovery break before finishing.'])
+    if unseen_choice == 0:
+        $ assignments_done += 1
+        $ change_stats(minutes=120, energy=-18, food=-8, grades=2)
+        $ friday_test_preparation += 1
+        "You submit your work. Mira ends up studying with someone else."
+    elif unseen_choice == 1:
+        $ change_stats(minutes=120, energy=-11, food=-7, friends=10, grades=-2)
+        $ friday_test_preparation += 2
+        "You understand the material better, but some assignment points are left on the table."
+    elif unseen_choice == 2:
+        $ assignments_done += 1
+        $ accommodations_requested = True
+        $ change_stats(minutes=150, energy=2, food=-6, grades=1, friends=-2)
+        "You work in shorter blocks and submit later in the evening."
     scene bg dorm
     $ clock = 1260
     "9:00 PM — Tomorrow brings circuits discussion and a policy seminar."
-    menu:
-        "Sleep early and leave tomorrow's preparation unfinished.":
-            $ change_stats(energy=17, food=-5)
-            "You choose rest, knowing you'll need to prepare between classes."
-        "Prepare for tomorrow's circuits discussion.":
-            $ friday_test_preparation += 2
-            $ change_stats(energy=-12, water=-5)
-            "You feel more confident about circuits, but it's a late night."
-        "Call a friend you've barely seen this week.":
-            $ change_stats(energy=-7, friends=10)
-            "You reconnect. The conversation runs longer than expected."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ["Sleep early and leave tomorrow's preparation unfinished.", "Prepare for tomorrow's circuits discussion.", "Call a friend you've barely seen this week."])
+    if unseen_choice == 0:
+        $ change_stats(energy=17, food=-5)
+        "You choose rest, knowing you'll need to prepare between classes."
+    elif unseen_choice == 1:
+        $ friday_test_preparation += 2
+        $ change_stats(energy=-12, water=-5)
+        "You feel more confident about circuits, but it's a late night."
+    elif unseen_choice == 2:
+        $ change_stats(energy=-7, friends=10)
+        "You reconnect. The conversation runs longer than expected."
     if energy <= 0:
         jump unseen_ambulance
     if grades < 65:
@@ -532,71 +661,75 @@ label tuesday:
     call unseen_incident
     "Today includes ENEE222 discussion and CPBE225. There's a short circuits problem set due."
     $ assignments_total += 1
-    menu:
-        "Complete the problem set before discussion.":
-            $ assignments_done += 1
-            $ change_stats(minutes=110, energy=-14, grades=2, food=-9)
-            $ friday_test_preparation += 2
-            "The answers take longer than expected. You head out without much downtime."
-        "Eat and hydrate, then submit what you already finished.":
-            $ change_stats(minutes=110, energy=6, food=18, water=15, grades=-2)
-            "You make it to class feeling more prepared physically, but the assignment is incomplete."
-        "Go to office hours for the hardest problems and submit afterward.":
-            $ assignments_done += 1
-            $ change_stats(minutes=130, energy=-8, grades=2, water=-5)
-            $ friday_test_preparation += 3
-            "You understand why your original method didn't work."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Complete the problem set before discussion.', 'Eat and hydrate, then submit what you already finished.', 'Go to office hours for the hardest problems and submit afterward.'])
+    if unseen_choice == 0:
+        $ assignments_done += 1
+        $ change_stats(minutes=110, energy=-14, grades=2, food=-9)
+        $ friday_test_preparation += 2
+        "The answers take longer than expected. You head out without much downtime."
+    elif unseen_choice == 1:
+        $ change_stats(minutes=110, energy=6, food=18, water=15, grades=-2)
+        "You make it to class feeling more prepared physically, but the assignment is incomplete."
+    elif unseen_choice == 2:
+        $ assignments_done += 1
+        $ change_stats(minutes=130, energy=-8, grades=2, water=-5)
+        $ friday_test_preparation += 3
+        "You understand why your original method didn't work."
     scene bg classroom
     $ clock = 750
     "12:30 PM — ENEE222 Discussion"
     "Your TA writes: 'Find the derivative of f(x) = x² sin(x).'"
-    menu:
-        "2x sin(x) + x² cos(x)":
-            $ quiz_points += 1
-            $ friday_test_preparation += 2
-            "Correct. The product rule differentiates one factor at a time."
-        "2x cos(x)":
-            $ friday_test_preparation += 0
-            "Not quite. You differentiated the two factors together instead of using the product rule."
-        "x² cos(x)":
-            "Not quite. You forgot the derivative of x² in the first product-rule term."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['2x sin(x) + x² cos(x)', '2x cos(x)', 'x² cos(x)'])
+    if unseen_choice == 0:
+        $ quiz_points += 1
+        $ friday_test_preparation += 2
+        "Correct. The product rule differentiates one factor at a time."
+    elif unseen_choice == 1:
+        $ friday_test_preparation += 0
+        "Not quite. You differentiated the two factors together instead of using the product rule."
+    elif unseen_choice == 2:
+        "Not quite. You forgot the derivative of x² in the first product-rule term."
     $ quiz_total += 1
     "The TA moves on to the next example."
-    menu:
-        "Stay for the full discussion and CPBE225 afterward.":
-            $ class_attendance += 2
-            $ change_stats(minutes=155, energy=-21, food=-12, water=-12)
-            $ friday_test_preparation += 1
-            "You take solid notes. You're drained by the end."
-        "Take a break between classes and arrive late to policy.":
-            $ class_attendance += 1
-            $ missed_classes += 1
-            $ change_stats(minutes=155, energy=-4, food=8, water=8)
-            "You catch the policy discussion halfway through."
-        "Ask for notes and skip policy to recover.":
-            $ class_attendance += 1
-            $ missed_classes += 1
-            $ accommodations_requested = True
-            $ change_stats(minutes=155, energy=14, food=9)
-            "You recover, but will need to catch up on the assigned debate."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Stay for the full discussion and CPBE225 afterward.', 'Take a break between classes and arrive late to policy.', 'Ask for notes and skip policy to recover.'])
+    if unseen_choice == 0:
+        $ class_attendance += 2
+        $ change_stats(minutes=155, energy=-21, food=-12, water=-12)
+        $ friday_test_preparation += 1
+        "You take solid notes. You're drained by the end."
+    elif unseen_choice == 1:
+        $ class_attendance += 1
+        $ missed_classes += 1
+        $ change_stats(minutes=155, energy=-4, food=8, water=8)
+        "You catch the policy discussion halfway through."
+    elif unseen_choice == 2:
+        $ class_attendance += 1
+        $ missed_classes += 1
+        $ accommodations_requested = True
+        $ change_stats(minutes=155, energy=14, food=9)
+        "You recover, but will need to catch up on the assigned debate."
     scene bg cafe
     $ clock = 1080
     "6:00 PM — Rowan texts: 'Come to the club fair with me? I don't want to go alone.'"
     "You want to find your community, but your week is already full."
-    menu:
-        "Go to the club fair and choose a group.":
-            $ change_stats(minutes=75, energy=-11, friends=6)
-            jump club_fair
-        "Ask Rowan to send you the club list so you can choose from home.":
-            $ change_stats(minutes=20, energy=5, friends=1)
-            "Rowan sends photos of the tables and tells you about the conversations."
-            jump club_fair
-        "Decline for now and spend the evening catching up.":
-            $ change_stats(minutes=90, energy=-8, grades=1, friends=-5)
-            $ friday_test_preparation += 2
-            "You make academic progress, but you haven't found a club yet."
-            $ club_name = "None"
-            if energy <= 0:
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Go to the club fair and choose a group.', 'Ask Rowan to send you the club list so you can choose from home.', 'Decline for now and spend the evening catching up.'])
+    if unseen_choice == 0:
+        $ change_stats(minutes=75, energy=-11, friends=6)
+        jump club_fair
+    elif unseen_choice == 1:
+        $ change_stats(minutes=20, energy=5, friends=1)
+        "Rowan sends photos of the tables and tells you about the conversations."
+        jump club_fair
+    elif unseen_choice == 2:
+        $ change_stats(minutes=90, energy=-8, grades=1, friends=-5)
+        $ friday_test_preparation += 2
+        "You make academic progress, but you haven't found a club yet."
+        $ club_name = "None"
+    if energy <= 0:
         jump unseen_ambulance
     if grades < 65:
         jump unseen_dismissal
@@ -607,15 +740,16 @@ label tuesday:
 label club_fair:
     "You can commit to one campus organization. Its meeting will become part of your week."
     "These are examples inspired by UMD student organizations; confirm current membership and meeting details through UMD's official student organization directory."
-    menu:
-        "Technica — event organizing and technology":
-            $ club_name = "Technica"
-        "Robotics at Maryland — engineering projects":
-            $ club_name = "Robotics at Maryland"
-        "Hack4Impact — technology for social impact":
-            $ club_name = "Hack4Impact"
-        "Terps Racing — engineering and team builds":
-            $ club_name = "Terps Racing"
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Technica — event organizing and technology', 'Robotics at Maryland — engineering projects', 'Hack4Impact — technology for social impact', 'Terps Racing — engineering and team builds'])
+    if unseen_choice == 0:
+        $ club_name = "Technica"
+    elif unseen_choice == 1:
+        $ club_name = "Robotics at Maryland"
+    elif unseen_choice == 2:
+        $ club_name = "Hack4Impact"
+    elif unseen_choice == 3:
+        $ club_name = "Terps Racing"
     $ club_commitment = 1
     $ change_stats(friends=6)
     "You join [club_name]. Your first meeting is Wednesday evening."
@@ -639,107 +773,114 @@ label wednesday:
     call unseen_incident
     "CMSC216 lecture and discussion are followed by circuits at noon. Your club meets this evening."
     "A friend texts: 'You've been distant lately. Are we okay?'"
-    menu:
-        "Explain that managing symptoms and deadlines has been difficult.":
-            $ honest_conversation = True
-            $ change_stats(minutes=15, friends=11, energy=-2)
-            "Your friend replies: 'I didn't know. We can plan something low-key.'"
-        "Say everything is fine so you don't worry them.":
-            $ change_stats(minutes=5, friends=-5)
-            "The conversation ends, but the misunderstanding remains."
-        "Promise to hang out tonight, even though you're not sure you can.":
-            $ change_stats(minutes=5, friends=3)
-            "Your friend is excited. Now you have another commitment."
-            $ social_notes.append("Promised a Wednesday hangout")
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Explain that managing symptoms and deadlines has been difficult.', "Say everything is fine so you don't worry them.", "Promise to hang out tonight, even though you're not sure you can."])
+    if unseen_choice == 0:
+        $ honest_conversation = True
+        $ change_stats(minutes=15, friends=11, energy=-2)
+        "Your friend replies: 'I didn't know. We can plan something low-key.'"
+    elif unseen_choice == 1:
+        $ change_stats(minutes=5, friends=-5)
+        "The conversation ends, but the misunderstanding remains."
+    elif unseen_choice == 2:
+        $ change_stats(minutes=5, friends=3)
+        "Your friend is excited. Now you have another commitment."
+        $ social_notes.append("Promised a Wednesday hangout")
     scene bg classroom
     $ clock = 600
     "10:00 AM — CMSC216"
     "The professor asks what the array expression arr[2] accesses in a zero-indexed array."
-    menu:
-        "The third element":
-            $ quiz_points += 1
-            $ friday_test_preparation += 2
-            "Correct. Index zero refers to the first element."
-        "The second element":
-            "Not quite. Index two is the third element."
-        "The array's length":
-            "Not quite. That would require a length operation or property."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['The third element', 'The second element', "The array's length"])
+    if unseen_choice == 0:
+        $ quiz_points += 1
+        $ friday_test_preparation += 2
+        "Correct. Index zero refers to the first element."
+    elif unseen_choice == 1:
+        "Not quite. Index two is the third element."
+    elif unseen_choice == 2:
+        "Not quite. That would require a length operation or property."
     $ quiz_total += 1
-    menu:
-        "Attend lecture, discussion, and circuits; eat afterward.":
-            $ class_attendance += 3
-            $ change_stats(minutes=210, energy=-29, food=-18, water=-17)
-            $ friday_test_preparation += 3
-            "You make every class. The afternoon feels long."
-        "Attend CMSC216 and circuits, but use discussion time for a break.":
-            $ class_attendance += 2
-            $ missed_classes += 1
-            $ change_stats(minutes=210, energy=-11, food=9, water=12)
-            $ friday_test_preparation += 1
-            "You preserve some energy, but must get discussion notes later."
-        "Attend discussion and circuits; review the lecture recording later.":
-            $ class_attendance += 2
-            $ missed_classes += 1
-            $ change_stats(minutes=210, energy=-13, food=7, water=8)
-            $ friday_test_preparation += 2
-            "You trade live lecture time for a more manageable morning."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Attend lecture, discussion, and circuits; eat afterward.', 'Attend CMSC216 and circuits, but use discussion time for a break.', 'Attend discussion and circuits; review the lecture recording later.'])
+    if unseen_choice == 0:
+        $ class_attendance += 3
+        $ change_stats(minutes=210, energy=-29, food=-18, water=-17)
+        $ friday_test_preparation += 3
+        "You make every class. The afternoon feels long."
+    elif unseen_choice == 1:
+        $ class_attendance += 2
+        $ missed_classes += 1
+        $ change_stats(minutes=210, energy=-11, food=9, water=12)
+        $ friday_test_preparation += 1
+        "You preserve some energy, but must get discussion notes later."
+    elif unseen_choice == 2:
+        $ class_attendance += 2
+        $ missed_classes += 1
+        $ change_stats(minutes=210, energy=-13, food=7, water=8)
+        $ friday_test_preparation += 2
+        "You trade live lecture time for a more manageable morning."
     scene bg library
     $ clock = 960
     "4:00 PM — You have a programming quiz to prepare for, and the club meeting is approaching."
     $ assignments_total += 1
-    menu:
-        "Finish the coding practice assignment before the meeting.":
-            $ assignments_done += 1
-            $ change_stats(minutes=90, energy=-17, grades=2)
-            $ friday_test_preparation += 3
-            "You finish, but the club meeting now feels like a lot."
-        "Take a structured rest break, then finish part of the assignment.":
-            $ rested_today = True
-            $ change_stats(minutes=90, energy=15, grades=-1)
-            $ friday_test_preparation += 1
-            "You feel more able to focus, though some practice remains undone."
-        "Study with Rowan and trade help on difficult questions.":
-            $ assignments_done += 1
-            $ change_stats(minutes=90, energy=-11, friends=8, grades=1)
-            $ friday_test_preparation += 2
-            "You both learn something. It takes longer than studying alone."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Finish the coding practice assignment before the meeting.', 'Take a structured rest break, then finish part of the assignment.', 'Study with Rowan and trade help on difficult questions.'])
+    if unseen_choice == 0:
+        $ assignments_done += 1
+        $ change_stats(minutes=90, energy=-17, grades=2)
+        $ friday_test_preparation += 3
+        "You finish, but the club meeting now feels like a lot."
+    elif unseen_choice == 1:
+        $ rested_today = True
+        $ change_stats(minutes=90, energy=15, grades=-1)
+        $ friday_test_preparation += 1
+        "You feel more able to focus, though some practice remains undone."
+    elif unseen_choice == 2:
+        $ assignments_done += 1
+        $ change_stats(minutes=90, energy=-11, friends=8, grades=1)
+        $ friday_test_preparation += 2
+        "You both learn something. It takes longer than studying alone."
     if club_name != "None":
         scene bg campus
         $ clock = 1110
         "6:30 PM — [club_name] meeting"
-        menu:
-            "Attend the full meeting and volunteer for a task.":
-                $ club_commitment += 2
-                $ change_stats(minutes=100, energy=-20, friends=13)
-                "You leave with a new responsibility and a few new contacts."
-            "Attend briefly, introduce yourself, then head home.":
-                $ club_commitment += 1
-                $ change_stats(minutes=45, energy=-7, friends=7)
-                "You connect with people while respecting your limits."
-            "Message the organizer and ask for a recap instead.":
-                $ change_stats(minutes=15, energy=7, friends=-2)
-                "You stay involved remotely, but miss the informal conversations."
+        $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+        $ unseen_choice = unseen_match_response(unseen_response, ['Attend the full meeting and volunteer for a task.', 'Attend briefly, introduce yourself, then head home.', 'Message the organizer and ask for a recap instead.'])
+        if unseen_choice == 0:
+            $ club_commitment += 2
+            $ change_stats(minutes=100, energy=-20, friends=13)
+            "You leave with a new responsibility and a few new contacts."
+        elif unseen_choice == 1:
+            $ club_commitment += 1
+            $ change_stats(minutes=45, energy=-7, friends=7)
+            "You connect with people while respecting your limits."
+        elif unseen_choice == 2:
+            $ change_stats(minutes=15, energy=7, friends=-2)
+            "You stay involved remotely, but miss the informal conversations."
     else:
         "6:30 PM — Other students are heading to club meetings."
-        menu:
-            "Spend the evening reviewing circuits.":
-                $ friday_test_preparation += 3
-                $ change_stats(minutes=85, energy=-13)
-            "Take a longer break and reach out to a friend.":
-                $ change_stats(minutes=85, energy=15, friends=5)
+        $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+        $ unseen_choice = unseen_match_response(unseen_response, ['Spend the evening reviewing circuits.', 'Take a longer break and reach out to a friend.'])
+        if unseen_choice == 0:
+            $ friday_test_preparation += 3
+            $ change_stats(minutes=85, energy=-13)
+        elif unseen_choice == 1:
+            $ change_stats(minutes=85, energy=15, friends=5)
     if "Promised a Wednesday hangout" in social_notes:
         "Your friend texts: 'Are we still hanging out?'"
-        menu:
-            "Be upfront and suggest a shorter meetup tomorrow.":
-                $ honest_conversation = True
-                $ change_stats(friends=5)
-                "Your friend appreciates having a concrete alternative."
-            "Go out tonight, even though your schedule is packed.":
-                $ change_stats(minutes=90, energy=-17, friends=10)
-                "You have fun. Tomorrow morning may be harder."
-            "Don't reply until tomorrow.":
-                $ change_stats(friends=-9)
-                "The unread message weighs on you."
+        $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+        $ unseen_choice = unseen_match_response(unseen_response, ['Be upfront and suggest a shorter meetup tomorrow.', 'Go out tonight, even though your schedule is packed.', "Don't reply until tomorrow."])
+        if unseen_choice == 0:
+            $ honest_conversation = True
+            $ change_stats(friends=5)
+            "Your friend appreciates having a concrete alternative."
+        elif unseen_choice == 1:
+            $ change_stats(minutes=90, energy=-17, friends=10)
+            "You have fun. Tomorrow morning may be harder."
+        elif unseen_choice == 2:
+            $ change_stats(friends=-9)
+            "The unread message weighs on you."
     if energy <= 0:
         jump unseen_ambulance
     if grades < 65:
@@ -760,66 +901,70 @@ label thursday:
     call unseen_incident
     "ENEE222 discussion and CPBE225 are on your calendar. Your professor also has office hours."
     "The circuits quiz is tomorrow. Mira asks you to help prepare for a presentation."
-    menu:
-        "Go to office hours before class and skip breakfast with Mira.":
-            $ change_stats(minutes=100, energy=-10, food=-9, friends=-3)
-            $ friday_test_preparation += 4
-            "Your professor helps you untangle a derivative problem."
-        "Eat with Mira and study together; miss office hours.":
-            $ change_stats(minutes=100, food=16, water=12, friends=12, energy=-5)
-            $ friday_test_preparation += 2
-            "You support each other, but your hardest question remains unresolved."
-        "Take a slower morning and email your professor a question.":
-            $ accommodations_requested = True
-            $ change_stats(minutes=100, energy=12, food=9, water=8)
-            $ friday_test_preparation += 1
-            "You send a specific question and wait for a reply."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Go to office hours before class and skip breakfast with Mira.', 'Eat with Mira and study together; miss office hours.', 'Take a slower morning and email your professor a question.'])
+    if unseen_choice == 0:
+        $ change_stats(minutes=100, energy=-10, food=-9, friends=-3)
+        $ friday_test_preparation += 4
+        "Your professor helps you untangle a derivative problem."
+    elif unseen_choice == 1:
+        $ change_stats(minutes=100, food=16, water=12, friends=12, energy=-5)
+        $ friday_test_preparation += 2
+        "You support each other, but your hardest question remains unresolved."
+    elif unseen_choice == 2:
+        $ accommodations_requested = True
+        $ change_stats(minutes=100, energy=12, food=9, water=8)
+        $ friday_test_preparation += 1
+        "You send a specific question and wait for a reply."
     scene bg classroom
     $ clock = 750
     "12:30 PM — ENEE222 discussion"
     "A related-rates question asks: a 10-foot ladder leans against a wall. If its base is 6 feet from the wall, how high is the top?"
-    menu:
-        "8 feet":
-            $ quiz_points += 1
-            $ friday_test_preparation += 2
-            "Correct: 6² + 8² = 10²."
-        "4 feet":
-            "Not quite. Use the Pythagorean theorem with the ladder as the hypotenuse."
-        "16 feet":
-            "Not quite. The height cannot exceed the 10-foot ladder."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['8 feet', '4 feet', '16 feet'])
+    if unseen_choice == 0:
+        $ quiz_points += 1
+        $ friday_test_preparation += 2
+        "Correct: 6² + 8² = 10²."
+    elif unseen_choice == 1:
+        "Not quite. Use the Pythagorean theorem with the ladder as the hypotenuse."
+    elif unseen_choice == 2:
+        "Not quite. The height cannot exceed the 10-foot ladder."
     $ quiz_total += 1
-    menu:
-        "Attend discussion and policy, then rest afterward.":
-            $ class_attendance += 2
-            $ change_stats(minutes=160, energy=-17, water=-10, food=-10)
-            "You make both classes and plan a quieter evening."
-        "Attend discussion but use policy time to recover and catch up later.":
-            $ class_attendance += 1
-            $ missed_classes += 1
-            $ change_stats(minutes=160, energy=8, food=10, water=10)
-            "You will need to review the policy discussion."
-        "Ask for notes, rest now, and prepare for the quiz tonight.":
-            $ missed_classes += 2
-            $ change_stats(minutes=160, energy=15, food=8, water=10)
-            $ friday_test_preparation += 2
-            "You gain study time but miss both in-person sessions."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Attend discussion and policy, then rest afterward.', 'Attend discussion but use policy time to recover and catch up later.', 'Ask for notes, rest now, and prepare for the quiz tonight.'])
+    if unseen_choice == 0:
+        $ class_attendance += 2
+        $ change_stats(minutes=160, energy=-17, water=-10, food=-10)
+        "You make both classes and plan a quieter evening."
+    elif unseen_choice == 1:
+        $ class_attendance += 1
+        $ missed_classes += 1
+        $ change_stats(minutes=160, energy=8, food=10, water=10)
+        "You will need to review the policy discussion."
+    elif unseen_choice == 2:
+        $ missed_classes += 2
+        $ change_stats(minutes=160, energy=15, food=8, water=10)
+        $ friday_test_preparation += 2
+        "You gain study time but miss both in-person sessions."
     scene bg dorm
     $ clock = 1140
     "7:00 PM — Your friend has a birthday dinner tonight. Tomorrow is the circuits quiz."
-    menu:
-        "Go to the whole dinner, even if you study less.":
-            $ change_stats(minutes=160, energy=-22, friends=17, food=15)
-            $ friday_test_preparation -= 2
-            "You laugh more than you have all week. You get home late."
-        "Go for dessert and tell your friend why you need to leave early.":
-            $ change_stats(minutes=70, energy=-8, friends=10, food=5)
-            $ friday_test_preparation += 1
-            $ honest_conversation = True
-            "Your friend appreciates seeing you, even briefly."
-        "Stay home and study; send a thoughtful birthday message.":
-            $ change_stats(minutes=120, energy=-15, friends=-5)
-            $ friday_test_preparation += 4
-            "You feel prepared, but you miss celebrating in person."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Go to the whole dinner, even if you study less.', 'Go for dessert and tell your friend why you need to leave early.', 'Stay home and study; send a thoughtful birthday message.'])
+    if unseen_choice == 0:
+        $ change_stats(minutes=160, energy=-22, friends=17, food=15)
+        $ friday_test_preparation -= 2
+        "You laugh more than you have all week. You get home late."
+    elif unseen_choice == 1:
+        $ change_stats(minutes=70, energy=-8, friends=10, food=5)
+        $ friday_test_preparation += 1
+        $ honest_conversation = True
+        "Your friend appreciates seeing you, even briefly."
+    elif unseen_choice == 2:
+        $ change_stats(minutes=120, energy=-15, friends=-5)
+        $ friday_test_preparation += 4
+        "You feel prepared, but you miss celebrating in person."
     if energy <= 0:
         jump unseen_ambulance
     if grades < 65:
@@ -840,92 +985,99 @@ label friday:
     call unseen_incident
     "Today is the CMSC216 lecture, circuits lecture, and your ENEE222 quiz."
     "You have also promised your club organizer an update, if you joined a club."
-    menu:
-        "Eat, hydrate, and review one page of notes.":
-            $ change_stats(minutes=70, energy=4, food=16, water=17)
-            $ friday_test_preparation += 1
-            "You arrive with a little less review time but a steadier routine."
-        "Use every minute for last-minute studying.":
-            $ change_stats(minutes=70, energy=-12, food=-9, water=-10)
-            $ friday_test_preparation += 3
-            "You cover more material, but the morning feels intense."
-        "Ask for a quieter testing arrangement and take time to prepare.":
-            $ accommodations_requested = True
-            $ change_stats(minutes=70, energy=6, water=12)
-            $ friday_test_preparation += 1
-            "You confirm your testing arrangements. Planning ahead helps reduce uncertainty."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Eat, hydrate, and review one page of notes.', 'Use every minute for last-minute studying.', 'Ask for a quieter testing arrangement and take time to prepare.'])
+    if unseen_choice == 0:
+        $ change_stats(minutes=70, energy=4, food=16, water=17)
+        $ friday_test_preparation += 1
+        "You arrive with a little less review time but a steadier routine."
+    elif unseen_choice == 1:
+        $ change_stats(minutes=70, energy=-12, food=-9, water=-10)
+        $ friday_test_preparation += 3
+        "You cover more material, but the morning feels intense."
+    elif unseen_choice == 2:
+        $ accommodations_requested = True
+        $ change_stats(minutes=70, energy=6, water=12)
+        $ friday_test_preparation += 1
+        "You confirm your testing arrangements. Planning ahead helps reduce uncertainty."
     scene bg classroom
     $ clock = 600
     "10:00 AM — CMSC216"
-    menu:
-        "Attend the lecture and review quiz material afterward.":
-            $ class_attendance += 1
-            $ change_stats(minutes=60, energy=-10, water=-5)
-            $ friday_test_preparation += 1
-        "Use lecture time to prepare for circuits, and catch up later.":
-            $ missed_classes += 1
-            $ change_stats(minutes=60, energy=-8)
-            $ friday_test_preparation += 2
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Attend the lecture and review quiz material afterward.', 'Use lecture time to prepare for circuits, and catch up later.'])
+    if unseen_choice == 0:
+        $ class_attendance += 1
+        $ change_stats(minutes=60, energy=-10, water=-5)
+        $ friday_test_preparation += 1
+    elif unseen_choice == 1:
+        $ missed_classes += 1
+        $ change_stats(minutes=60, energy=-8)
+        $ friday_test_preparation += 2
     scene bg classroom
     $ clock = 720
     "12:00 PM — ENEE222"
     "It's time for the quiz. Your preparation matters, but so does what you've learned along the way."
     $ quiz_total += 1
     "Question 1: What is the derivative of f(x) = x³ + 2x?"
-    menu:
-        "3x² + 2":
-            $ quiz_points += 1
-            "Correct."
-        "x² + 2":
-            "Not quite. The derivative of x³ is 3x²."
-        "3x + 2":
-            "Not quite. The exponent on x decreases by one."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['3x² + 2', 'x² + 2', '3x + 2'])
+    if unseen_choice == 0:
+        $ quiz_points += 1
+        "Correct."
+    elif unseen_choice == 1:
+        "Not quite. The derivative of x³ is 3x²."
+    elif unseen_choice == 2:
+        "Not quite. The exponent on x decreases by one."
     $ quiz_total += 1
     "Question 2: For f(x) = x² - 2 and x₀ = 1, what is the first Newton's Method approximation?"
-    menu:
-        "3/2":
-            $ quiz_points += 1
-            "Correct. x₁ = 1 - (-1)/2 = 3/2."
-        "1/2":
-            "Not quite. Subtract the entire fraction f(x₀)/f'(x₀)."
-        "2":
-            "Not quite. Newton's Method gives 3/2 after one step."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['3/2', '1/2', '2'])
+    if unseen_choice == 0:
+        $ quiz_points += 1
+        "Correct. x₁ = 1 - (-1)/2 = 3/2."
+    elif unseen_choice == 1:
+        "Not quite. Subtract the entire fraction f(x₀)/f'(x₀)."
+    elif unseen_choice == 2:
+        "Not quite. Newton's Method gives 3/2 after one step."
     $ quiz_total += 1
     "Question 3: Use linear approximation at x = 16 to estimate sqrt(17)."
-    menu:
-        "33/8":
-            $ quiz_points += 1
-            "Correct: 4 + (1/8)(1) = 33/8."
-        "17/4":
-            "Not quite. The slope at x = 16 is 1/8."
-        "4":
-            "Not quite. Four is the value at the base point, not the estimate."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['33/8', '17/4', '4'])
+    if unseen_choice == 0:
+        $ quiz_points += 1
+        "Correct: 4 + (1/8)(1) = 33/8."
+    elif unseen_choice == 1:
+        "Not quite. The slope at x = 16 is 1/8."
+    elif unseen_choice == 2:
+        "Not quite. Four is the value at the base point, not the estimate."
     $ quiz_total += 1
     "Question 4: A 10-foot ladder has its base 6 feet from the wall. If the base moves outward at 2 ft/s, what is dy/dt?"
-    menu:
-        "-3/2 ft/s":
-            $ quiz_points += 1
-            "Correct. At y = 8, dy/dt = -(6/8)(2) = -3/2."
-        "3/2 ft/s":
-            "The magnitude is right, but the top is moving down, so the rate is negative."
-        "-2 ft/s":
-            "Not quite. Differentiate x² + y² = 100 with respect to time."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['-3/2 ft/s', '3/2 ft/s', '-2 ft/s'])
+    if unseen_choice == 0:
+        $ quiz_points += 1
+        "Correct. At y = 8, dy/dt = -(6/8)(2) = -3/2."
+    elif unseen_choice == 1:
+        "The magnitude is right, but the top is moving down, so the rate is negative."
+    elif unseen_choice == 2:
+        "Not quite. Differentiate x² + y² = 100 with respect to time."
     $ quiz_total += 1
     "The quiz is over. You have done what you could with the time and resources available."
     if club_name != "None":
         "Your [club_name] organizer asks if you can help with a weekend task."
-        menu:
-            "Take the task and rearrange your weekend plans.":
-                $ club_commitment += 2
-                $ change_stats(energy=-10, friends=7)
-                "You accept. You will need to manage the added commitment."
-            "Offer a smaller task with a realistic deadline.":
-                $ club_commitment += 1
-                $ change_stats(friends=5)
-                "The organizer agrees. You have a manageable contribution."
-            "Decline this weekend and explain your workload.":
-                $ change_stats(energy=5, friends=-1)
-                "You communicate your limits clearly."
+        $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+        $ unseen_choice = unseen_match_response(unseen_response, ['Take the task and rearrange your weekend plans.', 'Offer a smaller task with a realistic deadline.', 'Decline this weekend and explain your workload.'])
+        if unseen_choice == 0:
+            $ club_commitment += 2
+            $ change_stats(energy=-10, friends=7)
+            "You accept. You will need to manage the added commitment."
+        elif unseen_choice == 1:
+            $ club_commitment += 1
+            $ change_stats(friends=5)
+            "The organizer agrees. You have a manageable contribution."
+        elif unseen_choice == 2:
+            $ change_stats(energy=5, friends=-1)
+            "You communicate your limits clearly."
     scene bg evening
     $ clock = 1080
     "FRIDAY — 6:00 PM"
@@ -989,16 +1141,17 @@ label unseen_incident:
         "Your balance feels less reliable today. You plan an accessible route and consider contacting your care team about changes."
     else:
         "Your glucose device alerts you to a reading that needs attention. You follow your own diabetes care plan."
-    menu:
-        "Pause and address your immediate needs.":
-            $ change_stats(minutes=25, energy=8, water=5)
-            "You take time to respond. You may need to adjust the rest of your schedule."
-        "Ask a friend or staff member for help with logistics.":
-            $ change_stats(minutes=15, energy=5, friends=5)
-            "Someone helps you find a quieter place or rearrange your plans."
-        "Keep going and try to deal with it after class.":
-            $ change_stats(minutes=5, energy=-17, grades=1)
-            "You save time now, but your symptoms make the next part of the day harder."
+    $ unseen_response = renpy.input("What would you do? Type your response:", length=240, allow=None).strip()
+    $ unseen_choice = unseen_match_response(unseen_response, ['Pause and address your immediate needs.', 'Ask a friend or staff member for help with logistics.', 'Keep going and try to deal with it after class.'])
+    if unseen_choice == 0:
+        $ change_stats(minutes=25, energy=8, water=5)
+        "You take time to respond. You may need to adjust the rest of your schedule."
+    elif unseen_choice == 1:
+        $ change_stats(minutes=15, energy=5, friends=5)
+        "Someone helps you find a quieter place or rearrange your plans."
+    elif unseen_choice == 2:
+        $ change_stats(minutes=5, energy=-17, grades=1)
+        "You save time now, but your symptoms make the next part of the day harder."
     if energy <= 0:
         jump unseen_ambulance
     if grades < 65:
@@ -1008,6 +1161,7 @@ label unseen_incident:
     return
 
 label unseen_ambulance:
+    $ unseen_game_active = False
     hide screen unseen_hud
     scene bg evening
     "Your vision fades. When you become aware of your surroundings again, you are in an ambulance."
@@ -1017,6 +1171,7 @@ label unseen_ambulance:
     jump unseen_restart
 
 label unseen_dismissal:
+    $ unseen_game_active = False
     hide screen unseen_hud
     scene bg dorm
     "An academic notice arrives. Under this game's fictional rules, your Grades score fell below 65."
@@ -1025,11 +1180,22 @@ label unseen_dismissal:
     jump unseen_restart
 
 label unseen_isolation:
+    $ unseen_game_active = False
     hide screen unseen_hud
     scene bg dorm
     "The messages have stopped. You feel isolated and overwhelmed, and decide you cannot continue the semester as it is."
     "GAME OVER — You withdraw from the semester to seek support and a different path forward."
     "This is a fictional ending. Friendship scores do not determine depression, and support can be found even during isolation."
+    jump unseen_restart
+
+label unseen_exhaustion:
+    $ unseen_game_active = False
+    hide screen unseen_hud
+    scene bg evening
+    "Your energy has reached zero. You cannot continue your planned activities today."
+    "You stop and seek a safe place to rest and ask for support. Your schedule will have to change."
+    "GAME OVER — Your available energy ran out."
+    "This is a fictional game mechanic, not a prediction that low energy causes fainting or a medical emergency."
     jump unseen_restart
 
 label unseen_restart:
