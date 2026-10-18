@@ -483,7 +483,7 @@ def draw_game_over(surface):
         "fainted": (
             "ambulance_bg.png",
             "Pain",
-            "YOIU FAINTED",
+            "YOU FAINTED",
             [
                 "Your energy reached zero, and yoiu lost conciousness.",
                 "A bystander saw you collapse and called 911.",
@@ -507,11 +507,10 @@ def draw_game_over(surface):
             "YOU MADE IT THROUGH THE DAY!",
             [
                 "You made it to 9:00 PM!",
-                "Living with a chronic illness means facing challenges",
-                "that others may never see.",
+                "Living with a chronic illness means facing challenges that others may never see.",
                 "You experienced just one day with one condition.",
-                "We hope you now have a greater appreciation for the",
-                "unseen struggles of people with chronic illnesses."
+                "We hope you now have a greater appreciation for the unseen struggles of people with chronic illnesses.",
+                "Thank you for playing!"
             ]
         )
     }
