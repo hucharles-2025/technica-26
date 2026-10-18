@@ -1,43 +1,18 @@
 import time
 import remote_comms as ios
 from time_manipulations import *
+import json
+import compiled_rules 
+from pprint import pprint
+import keyboard
+import os
 
-GAME_REAL_LIFE_MINUTES = 24
+GAME_REAL_LIFE_MINUTES = 48
 GAME_MINS_PER_REAL_MIN = int(1440 / GAME_REAL_LIFE_MINUTES)
 REAL_SECS_BETWEEN_GAME_MINS = 1 / GAME_MINS_PER_REAL_MIN * 60
-AI_ASSESS_PERIOD = 60 # in-game minutes
-MANUALLY_INIT_AI_ASSESS = False
+DEBUG_MODE = True
 
-GAME_STATE = {
-    "current_minute": get_minutes(7, 0),
-    "minutes_slept_last_night": 425,
-    "energy": 100,
-    "energy_burn_rate": 0.01, # per minute 
-    "water": 60, 
-    "water_burn_rate": 0.01, # per minute
-    "food": 40, 
-    "food_burn_rate": 0.01,
-    "gpa": 3.2, 
-    "active_task": None,
-    "tasks": {
-
-    }
-    # Each task dict entry is referred to by a unique alphanumeric ID. Under it should be a dict
-    # with a short description (shortdesc), a long description (longdesc), a visibility marker (visible) 
-    # a marker for time spent (time_spent), whether the task can be cancelled midway (can_cancel), 
-    # and how many minutes the task takes (requiredmins). Optional:
-    #   * (taskinitcmd) A command sent to the render engine when the task is initiated, 
-    #        mostly used to display
-    #        interactive tasks which require the user to play additional mind/dexterity games while
-    #        under the influence of pain, visual impairment, etc. If set to None then no command
-    #        is sent to the render engine when the task is started.
-    #   * (timeblockstart, timeblockend) A tuple containing the minute times 
-    #        during which that task must be done. If set to None, then the task can be started/worked on
-    #        at any time. This is mostly used for tasks like going to class, going to pharmacy to 
-    #        refill meds, etc. where there are certain hours where you can do it.
-    #   * (deadline) The minute timestamp where if you cross it, the AI will take note and start
-    #        applying consequences. 
-}
+GAME_STATE = compiled_rules.GAME_STATE_START
 
 # Handle all one time init steps
 if not ios.init_comms():
@@ -57,25 +32,16 @@ while True:
 
     # 2. For whatever task that the user has selected as active, give them one more minute
     # of completion time on that task.
-    active_task_name = GAME_STATE["active_task"]
-    if active_task_name in GAME_STATE["tasks"]:
+    for active_task_name in GAME_STATE["active_task_set"]:
         GAME_STATE["tasks"][active_task_name]["time_spent"] += 1
 
-    # 3. Check if we meet any of the conditions for a check up by the AI game master
-    if GAME_STATE["current_minute"] % AI_ASSESS_PERIOD == 0:
-        pass # Carry out a routine check of stats
-    elif active_task_name in GAME_STATE["tasks"]:
-        current_task_data = GAME_STATE["tasks"][active_task_name]
-        if current_task_data["time_spent"] >= current_task_data["requiredmins"]:
-            pass # Carry out an AI assessment of task performance and positive/negative consequences
-
-
-    # 4. Transmit current pretend time to client and add one minute to game time
+    # 3. Run all custom logic then tx data
     GAME_STATE["current_minute"] += 1
-    ios.send_message("SET_PRETEND_TIME", get_time_string(GAME_STATE["current_minute"]))
+    compiled_rules.handle_minute(GAME_STATE)
+    #ios.send_message("SEND_STATE", json.dumps(GAME_STATE))
     time.sleep(REAL_SECS_BETWEEN_GAME_MINS)
 
-    # 5. Check if we meet any stop conds
+    # 4. Check if we meet any stop conds
     if (GAME_STATE["energy"] <= 0):
         ios.send_message("STOP_COND", "ENERGY")
         break
@@ -88,3 +54,77 @@ while True:
     elif (GAME_STATE["gpa"] < 2.5):
         ios.send_message("STOP_COND", "GPA")
         break
+
+    # 5a. Define method for adding to the active task set 
+    # without violating mutex group rules and respecting
+    # timeblockstart, timeblockend
+    def lists_share_elems(list1, list2):
+        return (not set(list1).isdisjoint(list2))
+    def lists_share_mutex_groups(taskid1, taskid2):
+        return lists_share_elems(
+            GAME_STATE["tasks"][taskid1]["mutex_groups"],
+            GAME_STATE["tasks"][taskid2]["mutex_groups"]
+        )
+    def add_to_task_set(taskid):
+        tba_task_data = GAME_STATE["tasks"][taskid]
+
+        # 1. If this task is already in the active set, reject
+        if (taskid in GAME_STATE["active_task_set"]):
+            return 1, "This task is already underway." 
+
+        # 2. Check time: if it's too late, reject. Too early, place it in queue. Just right, 
+        # add it to active if it doesn't violate any mutexes
+        curr_time = GAME_STATE["current_minute"]
+        if (tba_task_data["timeblockstart"] is not None and curr_time > tba_task_data["timeblockend"]):
+            return 3, "It is too late to do this task."
+        elif (tba_task_data["timeblockend"] is not None and curr_time < tba_task_data["timeblockstart"]):
+            # Put it on the queue.
+            if taskid not in GAME_STATE["awaiting_task_set"]:
+                GAME_STATE["awaiting_task_set"].append(taskid)
+                return 4, "It is too early for this task, but it has been saved for later."
+            else:
+                return 5, "This task has already been queued for later."
+        else:
+            # Check mutex groups on the active set
+            for k in GAME_STATE["active_task_set"]:
+                if lists_share_mutex_groups(taskid, k):
+                    return 2, f"Can't do this task at the same time as {GAME_STATE['tasks'][k]['shortdesc']}"
+            
+            # Add it to the current tasks
+            GAME_STATE["active_task_set"].append(taskid)
+            return 0, "OK"
+
+    # 5b. If anything is in the queue, try to slide it in now.
+    # If it's still too early then nothing will happen, otherwise
+    # it will work.
+    awaiting_task_set_rewrite = []
+    for taskid in GAME_STATE["awaiting_task_set"]:
+        retcode, msg = add_to_task_set(taskid)
+        if retcode in [4,5]: 
+            # ONLY keep it on queue if it's still too early -- if there's 
+            # a mutex violation, it's too late somehow, etc., then remove it
+            awaiting_task_set_rewrite.append(taskid)
+        else:
+            input(msg)
+    GAME_STATE["awaiting_task_set"] = awaiting_task_set_rewrite
+        
+    # 6. Draw the command line testing utility, if enabled
+    if DEBUG_MODE:
+        os.system("cls")
+        print(f"TIME: {get_time_string(GAME_STATE['current_minute'])}\n")
+        print(f"ENERGY: {GAME_STATE['energy']}")
+        print(f"WATER: {GAME_STATE['water']}")
+        print(f"FOOD: {GAME_STATE['food']}\n")
+        print(f"ENERGY BURN RATE: {GAME_STATE['energy_burn_rate']}")
+        print(f"WATER BURN RATE: {GAME_STATE['water_burn_rate']}")
+        print(f"FOOD BURN RATE: {GAME_STATE['food_burn_rate']}\n")
+        print(f"GPA: {GAME_STATE['gpa']}\n")
+        print("TASKS:")
+        for v in GAME_STATE["tasks"].values():
+            if not v["visibility"]: 
+                continue
+            print(f"  * {v['shortdesc']}: {v['longdesc']} ")
+        print(f"\n(SELECTED TASKS: {GAME_STATE['active_task_set']})")
+        print(f"\n(AWAITING TASKS: {GAME_STATE['awaiting_task_set']})")
+
+        

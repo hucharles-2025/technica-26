@@ -11,7 +11,7 @@ def get_minutes(h, m):
 def get_time_string(mst):
     hour = mst // 60
     mst = mst % 60
-    return f"{hour}:{mst}" 
+    return f"{hour}:{str(mst).zfill(2)}" 
 
 # Prints out a time diff in "1h 2m" format
 # based on a diff reported in # minutes
